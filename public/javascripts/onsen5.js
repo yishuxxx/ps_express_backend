@@ -1,5 +1,25 @@
 var index=0;
-var MyPage = React.createClass({
+
+var EmptyPage = React.createClass({
+  gotoPreviousPage: function(route,navigator){
+    navigator.popPage();
+  },
+  renderToolbar: function(){
+    return(
+      <Ons.Toolbar>
+        <div className="left">{this.props.route.hasBackButton ? <Ons.BackButton onClick={this.gotoPreviousPage.bind(this,this.props.route,this.props.navigator)}>Back</Ons.BackButton> : null}</div>
+        <div className="center">{this.props.route.title}</div>
+      </Ons.Toolbar>
+    );
+  },
+  render: function(){
+    return(
+      <Ons.Page renderToolbar={this.renderToolbar}></Ons.Page>
+    );
+  }
+});
+
+var LoginPage = React.createClass({
   getInitialState: function() {
     return {
       username: '',
@@ -138,6 +158,13 @@ var HomePage = React.createClass({
         hasBackButton: true
     });
   },
+  gotoPage: function(route,navigator){
+    navigator.pushPage({
+      url: 'empty',
+      title: 'Empty Page',
+      hasBackButton: true
+    });
+  },
   hide:function(){
     this.setState({isOpen:false})
   },
@@ -147,16 +174,25 @@ var HomePage = React.createClass({
   rightMenuHandler: function(route,navigator,title){
     if(title == 'Login'){
       this.gotoLoginPage(route,navigator);
+    }else{
+      this.gotoPage(route,navigator);
     }
   },
 
   renderToolbar: function(){
     return (
       <Ons.Toolbar>
-        <Ons.ToolbarButton>
-          
-        </Ons.ToolbarButton>
-        <div className='center'>Homepage</div>
+        <div className='left'>
+          <Ons.ToolbarButton onClick={this.show}>
+            <Ons.Icon icon='fa-bars' /> 
+          </Ons.ToolbarButton>
+        </div>
+        <div className='center' style={{textAlign: 'center'}}>Homepage</div>
+        <div className='right'>
+          <Ons.ToolbarButton>
+            <Ons.Icon icon='fa-user' /> 
+          </Ons.ToolbarButton>
+        </div>
       </Ons.Toolbar>
     );
   },
@@ -180,7 +216,7 @@ var HomePage = React.createClass({
           <Ons.List
               dataSource={['Login','Orders','Settings']}
               renderRow={(title)=>
-                (<Ons.ListItem key={title} onClick={this.rightMenuHandler.bind(this,this.props.route,this.props.navigator,title)} tappable>{title}</Ons.ListItem>
+                (<Ons.ListItem key={title} onClick={this.rightMenuHandler.bind(this,this.props.route,this.props.navigator,title)} tappable><Ons.Icon icon='ion-navicon, material:md-menu' />{title}</Ons.ListItem>
               )}
             />
         </Ons.Page>
@@ -201,7 +237,9 @@ var MyNavigator = React.createClass({
     if(route.url == 'home'){
       return <HomePage key={route.title+index} route={route} navigator={navigator}/>;
     }else if(route.url == 'login'){
-      return <MyPage key={route.title+index} route={route} navigator={navigator}/>;
+      return <LoginPage key={route.title+index} route={route} navigator={navigator}/>;
+    }else{
+      return <EmptyPage key={route.title+index} route={route} navigator={navigator}/>;
     }
 
   },

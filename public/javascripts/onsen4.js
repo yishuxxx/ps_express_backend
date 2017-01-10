@@ -1,5 +1,5 @@
 var index=0;
-var MyPage = React.createClass({
+var LoginPage = React.createClass({
   getInitialState: function() {
     return {
       username: '',
@@ -125,6 +125,25 @@ var MyPage = React.createClass({
   }
 });
 
+var EmptyPage = React.createClass({
+  gotoPreviousPage: function(route,navigator){
+    navigator.popPage();
+  },
+  renderToolbar: function(){
+    return(
+      <Ons.Toolbar>
+        <div className="left">this.props.route.hasBackButton ? <Ons.BackButton onClick={this.gotoPreviousPage.bind(this,this.props.route,this.props.navigator)}>Back</Ons.BackButton> : null</div>
+        <div className="center">this.props.route.title</div>
+      </Ons.Toolbar>
+    );
+  },
+  render: function(){
+    return(
+      <Ons.Page renderToolbar={this.renderToolbar}></Ons.Page>
+    );
+  }
+});
+
 var HomePage = React.createClass({
   getInitialState: function() {
     return({
@@ -167,8 +186,10 @@ var MyNavigator = React.createClass({
   renderPage: function(route, navigator) {
     if(route.url == 'home'){
       return <HomePage key={route.title+index} route={route} navigator={navigator}/>;
+    }else if(route.url == 'login'){
+      return <LoginPage key={route.title+index} route={route} navigator={navigator}/>;
     }else{
-      return <MyPage key={route.title+index} route={route} navigator={navigator}/>;
+      return <EmptyPage key={route.title+index} route={route} navigator={navigator}/>;
     }
 
   },
