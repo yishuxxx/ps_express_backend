@@ -20,7 +20,7 @@ var ProductSingle = React.createClass({
     return ({
       id: p.id ? p.id : 1,
       name: p.name ? p.name : 'NoNameProduct',
-      images: p.images ? p.images : [{id_image:1}],
+      images: p.images ? p.images : [{id:1}],
       price: p.price ? p.price : 0.00
     });
   },
@@ -37,28 +37,53 @@ var ProductSingle = React.createClass({
     return (
       <Ons.Toolbar>
         <div className="left">{this.props.route.hasBackButton ? <Ons.BackButton onClick={this.gotoPreviousPage.bind(this,this.props.route,this.props.navigator)}>Back</Ons.BackButton> : null}</div>
+        <div className="center"></div>
+        <div className="right">
+          <Ons.ToolbarButton>
+            <Ons.Icon icon='fa-shopping-cart' /> 
+          </Ons.ToolbarButton>
+        </div>
       </Ons.Toolbar>
     );
   },
 
   render: function() {
+    var s = this.state;
+    console.log(s)
     return (
-      <Ons.Page renderToolbar={this.renderToolbar}>
-        <div className='left'>
-          <img src={idImgToUrl(1)} style={{height:'80px'}}/>
+      <Ons.Page renderToolbar={this.renderToolbar} style={{fontSize:'16px'}}>
+        <div style={{textAlign:'center'}}>
+          <img src={idImgToUrl(s.images[0].id)} style={{height:'250px'}}/>
         </div>
-        <div className='center' style={{paddingLeft:'10px'}}>
-          <div style={{display:'block',width:'100%',fontSize:'14px'}}>{this.state.product ? this.state.product['name']+'asd asd kla das d akd akd a da sd ad a sd -'+this.state.product['id'] : ''}</div>
-          <div style={{display:'block',width:'100%',fontSize:'14px',color:'red'}}>RM {this.state.product ? this.state.product['price'].toFixed(2) : '100.00'}</div>
-          <div style={{display:'block',width:'100%',fontSize:'14px'}}><span style={{fontSize:'12px',textDecoration:'line-through'}}>RM 80.00</span><span style={{fontSize:'12px',color:'red'}}> -- save 20%</span></div>
-          <div style={{display:'block',width:'100%',fontSize:'14px',color:'#ffcc00'}}>
+        <div style={{padding:'30px'}}>
+          <div>{s.name}</div>
+          <div style={{fontSize:'14px',color:'red'}}>
+            <span>RM {s.price.toFixed(2)}</span>
+            <span style={{fontSize:'12px',textDecoration:'line-through'}}>RM 80.00</span>
+            <span style={{fontSize:'12px',color:'red'}}> -- save 20%</span>
+          </div>
+          <div style={{fontSize:'14px',color:'#ffcc00'}}>
             <Ons.Icon icon='fa-star' style={{marginRight:'2px'}}/>
             <Ons.Icon icon='fa-star' style={{marginRight:'2px'}}/>
             <Ons.Icon icon='fa-star' style={{marginRight:'2px'}}/>
             <Ons.Icon icon='fa-star' style={{marginRight:'2px'}}/>
             <Ons.Icon icon='fa-star' style={{marginRight:'2px'}}/>
           </div>
+          <section>
+            <header>Product Details:</header>
+            <ul>
+              <li style={{marginBottom:'5px'}}>{"Product is not eligible for voucher"}</li>
+              <li style={{marginBottom:'5px'}}>{"Full HD 1920 x 1080 Resolution"}</li>
+              <li style={{marginBottom:'5px'}}>{"Display Screen Size 40"}</li>
+              <li style={{marginBottom:'5px'}}>{"Some other fucking specifications"}</li>
+              <li style={{marginBottom:'5px'}}>{"And also some other bullshit specification"}</li>
+              <li style={{marginBottom:'5px'}}>{"And it talks about how good the product is"}</li>
+              <li style={{marginBottom:'5px'}}>{"without adding any images"}</li>
+              <li style={{marginBottom:'5px'}}>{"Because it might consume alot of previous bandwidth on a mobile connection, which the user super hates and will not open your app anymore if it happens"}</li>
+            </ul>
+          </section>
         </div>
+        <Ons.Fab position='bottom right'><Ons.Icon icon="fa-cart-plus"/></Ons.Fab>
       </Ons.Page>
     );
   }
@@ -90,7 +115,7 @@ var MyProducts = React.createClass({
 
   handleScroll: function(e){
     var currentItemOnTop = Math.floor(e.target.scrollTop/this.listItemHeight());
-    if( (currentItemOnTop + 10) > store['products'].length){
+    if( (currentItemOnTop + 5) > store['products'].length){
       getProducts(store['products'].length);
     }
     //console.log(e.target.scrollTop+'-'+'TopItemNo ='+ currentItemOnTop);
@@ -100,7 +125,12 @@ var MyProducts = React.createClass({
     return (
       <Ons.Toolbar>
         <div className="left">{this.props.route.hasBackButton ? <Ons.BackButton onClick={this.gotoPreviousPage.bind(this,this.props.route,this.props.navigator)}>Back</Ons.BackButton> : null}</div>
-        <div className='center'>Products</div>
+        <div className="center">Products</div>
+        <div className="right">
+          <Ons.ToolbarButton>
+            <Ons.Icon icon='fa-shopping-cart' /> 
+          </Ons.ToolbarButton>
+        </div>
       </Ons.Toolbar>
     );
   },
