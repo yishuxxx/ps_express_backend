@@ -91,3 +91,62 @@ JOIN `ps_attribute_lang` as f2 ON f.`id_attribute`=f2.`id_attribute`
 JOIN `ps_attribute_lang` as f2 ON f.`id_attribute`=f2.`id_attribute`
 JOIN `ps_attribute_group_lang` AS b ON a.`id_attribute_group`=b.`id_attribute_group`
 WHERE b.`id_lang`=1
+
+
+SELECT 
+	a.id_category as id,
+	b.name as name
+FROM ps_category AS a
+LEFT JOIN ps_category_lang as b ON a.id_category=b.id_category
+WHERE b.id_lang=1
+ORDER BY a.id_category
+
+
+SELECT a.id_order as id_order,
+a.reference as reference,
+a.id_carrier as id_carrier,
+a.id_customer as id_customer,
+a.id_address_delivery as id_address_delivery,
+a.id_address_invoice as id_address_invoice,
+a.payment as payment_method,
+a.current_state as current_state,
+b.name as carrier_name,
+a2.tracking_number as tracking_number,
+a2.shipping_cost_tax_incl as shipping_cost,
+a3.product_id as id_product,
+a3.product_attribute_id as id_product_attribute,
+a3.product_name as product_name,
+a3.product_quantity as product_quantity,
+c.company as customer_company,
+c.firstname as customer_firstname,
+c.lastname as customer_lastname,
+c.email as customer_email,
+c.is_guest as customer_is_guest,
+e.firstname as delivery_firstname,
+e.lastname as delivery_lastname,
+e.company as delivery_company,
+e.phone as delivery_phone,
+e.address1 as delivery_address1,
+e.address2 as delivery_address2,
+e.postcode as delivery_postcode,
+e.city as delivery_city,
+e2.firstname as invoice_firstname,
+e2.lastname as invoice_lastname,
+e2.company as invoice_company,
+e2.phone as invoice_phone,
+e2.address1 as invoice_address1,
+e2.address2 as invoice_address2,
+e2.postcode as invoice_postcode,
+e2.city as invoice_city
+FROM ps_orders as a
+JOIN ps_order_carrier as a2 ON a.id_order=a2.id_order
+JOIN ps_order_detail as a3 ON a.id_order=a3.id_order
+JOIN ps_order_state as a4 ON a.current_state=a4.id_order_state
+JOIN ps_order_state_lang as a4l ON a4.id_order_state=a4l.id_order_state
+JOIN ps_carrier as b ON a.id_carrier = b.id_carrier
+JOIN ps_carrier_lang as b2 ON a.id_carrier = b2.id_carrier
+JOIN ps_customer as c ON a.id_customer = c.id_customer
+JOIN ps_product as d ON a3.product_id = d.id_product
+JOIN ps_address as e ON a.id_address_delivery = e.id_address
+LEFT JOIN ps_address as e2 ON a.id_address_invoice = e2.id_address
+WHERE b2.id_lang=1 AND a4l.id_order_state=1

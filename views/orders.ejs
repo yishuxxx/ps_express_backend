@@ -1,0 +1,14 @@
+<!-- views/orders.ejs -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <% include ./partials/head %>
+</head>
+<body class="container">
+
+    <div id="app"></div>
+    <script type="text/javascript" src="/javascripts/bundle_orders.js"></script>
+    <script>window.data = !<%= JSON.stringify(data) %></script>
+</body>
+</html>
