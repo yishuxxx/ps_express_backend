@@ -12,6 +12,7 @@ import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import AppBar from 'material-ui/AppBar';
 import IconButton from 'material-ui/IconButton';
 import NavigationClose from 'material-ui/svg-icons/navigation/close';
+import TextField from 'material-ui/TextField';
 
 const styles = {
   container: {
@@ -67,8 +68,6 @@ class Main extends Component {
           >
             1-2-3-4-5
           </Dialog>
-          <h1>Material-UI</h1>
-          <h2>example project</h2>
           <AppBar 
             title="TheTitle"
             onTitleTouchTap={this.handleTouchTap}
@@ -85,6 +84,16 @@ class Main extends Component {
             secondary={true}
             onTouchTap={this.handleTouchTap}
           />
+          </div>
+          <div>
+            <div id="order">
+              <div>
+                <label>Email:</label><TextField hintText="yishufoo@gmail.com" /><RaisedButton label="Search"/>
+              </div>
+              <div>
+                <label>FB Name:</label><TextField hintText="Foo Yishuu" />
+              </div>
+            </div>
           </div>
         </div>
       </MuiThemeProvider>
