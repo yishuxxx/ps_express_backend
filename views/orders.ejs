@@ -5,10 +5,21 @@
 <head>
     <% include ./partials/head %>
 </head>
-<body class="container">
+<body>
+
+	<style>
+		table {
+		    border-collapse: collapse;
+		}
+
+		table, th, td {
+		    border: 1px solid black;
+		}
+	</style>
 
     <div id="app"></div>
-    <script type="text/javascript" src="/javascripts/bundle_orders.js"></script>
-    <script>window.data = !<%= JSON.stringify(data) %></script>
+    <script>window.data = <%- JSON.stringify(data) %></script>
+    
+    <script type="text/javascript" src="<%= base_dir %>/javascripts/bundle_orders.js"></script>
 </body>
 </html>

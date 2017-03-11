@@ -13,7 +13,6 @@ var index = require('./routes/index');
 var users = require('./routes/users');
 var helper = require('./src/Utils/Helper');
 var md5 = require('crypto-js/md5');
-var {settings} = require('./settings');
 
 var app = express();
 
@@ -23,7 +22,6 @@ const _COOKIE_KEY_ = 'tdbbE5CUZ3pEzUVgSv7JPibBbmyVz7Dkdgifysdg18YCAzummGUxPpyb';
 app.set('views', path.join(__dirname, 'views'));
 //app.set('view engine', 'jade');
 app.set('view engine', 'ejs');
-app.locals.base_dir = settings.base_dir;
 
 // uncomment after placing your favicon in /public
 app.use(logger('dev'));
@@ -168,10 +166,8 @@ Customer.belongsToMany(Group, {through: CustomerGroup});
 Group.belongsToMany(Customer, {through: CustomerGroup});
 //Customer.hasOne(SYCustomer,{foreignKey:'id_customer'});
 
-//Order.hasOne(SYOrder,{foreignKey:'id_order',targetKey:'id_order'});
-//SYOrder.belongsTo(SYPage,{foreignKey:'id_sypage'});
-Order.belongsTo(SYPage, {foreignKey:'id_sypage'});
-SYPage.hasMany(Order, {foreignKey:'id_sypage'});
+Order.hasOne(SYOrder,{foreignKey:'id_order',targetKey:'id_order'});
+SYOrder.belongsTo(SYPage,{foreignKey:'id_sypage'});
 Order.hasMany(OrderDetail, {foreignKey:'id_order'});
 Order.hasOne(OrderInvoice,{foreignKey:'id_order'});
 Order.hasOne(OrderCarrier, {foreignKey:'id_order'});
@@ -393,8 +389,8 @@ var updateOrderDependencies = function(id_order){
 }
 
 app.all([
-	'/asd/asd',
-	'/asd'
+	'/order/update',
+	'/orderdetail'
 ],function(req,res,next){
 
 })
@@ -554,13 +550,10 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
 
 	return sequelize.transaction().then(function (t) {
 
-	Sequelize.Promise.all([
-		Tax.scope('admin').findOne({where:{id_tax:1}}),
-		SYPage.scope('admin').findAll()
-	]).then(function(Instances){
+	Tax.scope('admin').findOne({where:{id_tax:1}})
+	.then(function(Instance){
 
-		r.Tax = Instances[0];
-		r.SYPages = Instances[1];
+		r.Tax = Instance;
 		return Customer.create({
 			email: q.email,
 			sy_fbuser_name: q.sy_fbuser_name,
@@ -588,7 +581,6 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
 	}).then(function(Instance){
 
 		r.Address = Instance;
-		var invoice_no = r.SYPages[q.id_sypage-1].prefix+r.SYPages[q.id_sypage-1].invoice_no_latest;
 		return Order.create({
 			id_customer 		: r.Customer.id_customer,
 			id_sypage 			: q.id_sypage,
@@ -598,17 +590,12 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
 			id_address_invoice 	: r.Address.id_address,
 			id_carrier			: q.id_carrier,
 			secure_key			: md5(helper.passwdGen(9)).toString(),
-			reference 			: invoice_no
+			reference 			: helper.passwdGen(9,'NO_NUMERIC')
 		}, {transaction: t});
 	}).then(function(Instance){
 
 		r.Order = Instance;
-		r.SYPages[q.id_sypage-1].invoice_no_latest = r.SYPages[q.id_sypage-1].invoice_no_latest +1;
-		return r.SYPages[q.id_sypage-1].save({transaction: t});
 
-	}).then(function(Instance){
-
-		r.SYPage = Instance; 
 		return OrderInvoice.create({
 			id_order 	: r.Order.id_order,
 			number 		: r.Order.id_order,
@@ -812,8 +799,6 @@ app.get('/order/create',function(req,res){
 })
 
 app.get('/order/update',function(req, res){
-	console.log('SOMETHING IS NOT RIGHT');
-
 	const id_order = req.query.id_order;
 	const current_state = req.query.current_state;
 	const id_sypage = req.query.id_sypage;
@@ -824,10 +809,8 @@ app.get('/order/update',function(req, res){
 	])
 	.then(function(answers){
 		results = answers;
-		console.log(results);
 		if(results && results[0]){
-			results[0].current_state = current_state;
-			results[0].id_sypage = id_sypage;
+			results[0].current_state = current_state; 
 
 			return results[0].save();
 		}
@@ -874,8 +857,7 @@ app.get('/orders',function(req, res){
 		a.total_products_wt as total_products_wt,
 		a.total_shipping_tax_incl as total_shipping_tax_incl,
 		a.total_discounts_tax_incl as total_discounts_tax_incl,
-		a.total_paid_tax_incl as total_paid_tax_incl,
-		a.total_paid_real as total_paid_real,
+		a.total_paid as total_paid,
 		a.date_add as date_add,
 		b.name as carrier__name,
 		a2.tracking_number as carrier__tracking_number,
@@ -896,7 +878,6 @@ app.get('/orders',function(req, res){
 		c.email as customer__email,
 		c.is_guest as customer__is_guest,
 		d.reference as products__reference,
-		d2.reference as products__product_attribute_reference,
 		e.firstname as delivery__firstname,
 		e.lastname as delivery__lastname,
 		e.company as delivery__company,
@@ -904,7 +885,7 @@ app.get('/orders',function(req, res){
 		e.address1 as delivery__address1,
 		e.address2 as delivery__address2,
 		e.postcode as delivery__postcode,
-		e3.name as delivery__state,
+		e.city as delivery__city,
 		e2.firstname as invoice__firstname,
 		e2.lastname as invoice__lastname,
 		e2.company as invoice__company,
@@ -912,8 +893,7 @@ app.get('/orders',function(req, res){
 		e2.address1 as invoice__address1,
 		e2.address2 as invoice__address2,
 		e2.postcode as invoice__postcode,
-		e4.name as invoice__state,
-		f.name as sypage_name
+		e2.city as invoice__city
 		FROM ps_orders as a
 		JOIN ps_order_carrier as a2 ON a.id_order=a2.id_order
 		JOIN ps_order_detail as a3 ON a.id_order=a3.id_order
@@ -925,12 +905,8 @@ app.get('/orders',function(req, res){
 		LEFT JOIN ps_carrier_lang as b2 ON a.id_carrier = b2.id_carrier
 		JOIN ps_customer as c ON a.id_customer = c.id_customer
 		LEFT JOIN ps_product as d ON a3.product_id = d.id_product
-		LEFT JOIN ps_product_attribute as d2 ON a3.product_attribute_id = d2.id_product_attribute
 		LEFT JOIN ps_address as e ON a.id_address_delivery = e.id_address
 		LEFT JOIN ps_address as e2 ON a.id_address_invoice = e2.id_address
-		LEFT JOIN ps_state as e3 ON e.id_state = e3.id_state
-		LEFT JOIN ps_state as e4 ON e2.id_state = e4.id_state		
-		LEFT JOIN sy_page as f ON a.id_sypage = f.id_sypage
 		WHERE b2.id_lang=1 AND a4l.id_lang=1
 		LIMIT :limit OFFSET :offset`,
 	{replacements:{limit:limit, offset:(req.query.offset?req.query.offset : 0)},type:sequelize.QueryTypes.SELECT})

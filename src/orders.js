@@ -1,3 +1,5 @@
+import { syDateFormat } from './Utils/Helper';
+
 var MyPage = React.createClass({
   render: function() {
     var orders = this.props.data;
@@ -36,51 +38,63 @@ var MyPage = React.createClass({
     }
     console.log(rows);
 
+    var sypage_name = '---';
+    var date_add = '---';
+    var reference = '---';
     return (
-      <table>
+      <table style={{width:'3500px'}}>
       <tbody>
-        {rows.map((row, index) => (
+        {rows.map((row, index) => {
+          if(row.date_add){
+            if(row.date_add != '---'){
+              sypage_name = row.sypage_name;
+              date_add = row.date_add;
+              reference = row.reference;
+            }
+          }
+
+          return (
           <tr key={index}>
-            <td>{row.reference}</td>
-            <td>{row.date_add}</td>
-            <td>{"PAGE"}</td>
-            <td>{row.product.reference}</td>
-            <td>{row.product.id}</td>
+            <td>{reference}</td>
+            <td style={{width:'150px'}}>{syDateFormat(date_add)}</td>
+            <td>{sypage_name}</td>
+            <td>{row.product.product_attribute_reference ? row.product.product_attribute_reference.toUpperCase() : row.product.reference.toUpperCase()}</td>
+            <td>{""}</td>
             <td>{row.product.quantity}</td>
-            <td>{row.product.unit_price_tax_incl}</td>
-            <td>{row.total_shipping_tax_incl}</td>
-            <td>{row.total_discounts_tax_incl}</td>
-            <td>{row.total_paid-(row.total_products_wt+row.total_shipping_tax_incl-row.total_discounts_tax_incl)}</td>
-            <td>{row.total_paid}</td>
+            <td>{row.product.unit_price_tax_incl.toFixed(2)}</td>
+            <td>{(typeof row.total_shipping_tax_incl == 'string') ? row.total_shipping_tax_incl : row.total_shipping_tax_incl.toFixed(2)}</td>
+            <td>{(typeof row.total_discounts_tax_incl == 'string') ? row.total_discounts_tax_incl : row.total_discounts_tax_incl.toFixed(2)}</td>
+            <td>{(row.total_paid_real-(row.total_products_wt+row.total_shipping_tax_incl-row.total_discounts_tax_incl)).toFixed(2)}</td>
+            <td>{(typeof row.total_paid_real == 'string') ? row.total_paid_real : row.total_paid_real.toFixed(2)}</td>
             <td>{""}</td>
-            <td>{"PaymentNotes"}</td>
-            <td>{"Bank"}</td>
+            <td>{""}</td>{/* PaymentNotes */}
+            <td>{""}</td>{/* Bank */}
             <td>{row.payment_method}</td>
-            <td>{"PaymentStatus"}</td>
-            <td>{"PrintInvoice"}</td>
-            <td>{"Tag"}</td>
-            <td>{"Resend"}</td>
-            <td>{"Note"}</td>
+            <td>{""}</td>{/* PaymentStatus */}
+            <td>{""}</td>{/* PrintInvoice */}
+            <td>{""}</td>{/* Tag */}
+            <td>{""}</td>{/* Resend */}
+            <td>{""}</td>{/* Note */}
             <td>{row.carrier.tracking_number}</td>
-            <td>{row.status_name}</td>
-            <td>{"ShipOutDate"}</td>
-            <td>{"FbName"}</td>
+            <td>{""}</td>{/* status_name */}
+            <td>{""}</td>{/* ShipOutDate */}
+            <td>{row.customer.sy_fbuser_name}</td>
             <td>{row.delivery.firstname+" "+row.delivery.lastname}</td>
-            <td>{row.delivery.address1}</td>
-            <td>{row.delivery.address2}</td>
-            <td>{""}</td>
-            <td>{""}</td>
+            <td>{row.delivery.address1.split('\n')[0]}</td>
+            <td>{row.delivery.address1.split('\n')[1]}</td>
+            <td>{row.delivery.address1.split('\n')[2]}</td>
+            <td>{row.delivery.address1.split('\n')[3]}</td>
             <td>{row.delivery.postcode}</td>
-            <td>{row.delivery.city}</td>
+            <td>{row.delivery.state}</td>
             <td>{row.delivery.phone}</td>
             <td>{row.customer.email}</td>
           </tr>
-        ))}
+          )
+        })}
       </tbody>
       </table>
     );
   }
 });
-
-
+  console.log(window.data);
   ReactDOM.render(<MyPage data={window.data}/>, document.getElementById('app'));
