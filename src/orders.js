@@ -1,3 +1,6 @@
+import React, {Component} from 'react';
+import {render} from 'react-dom';
+import { createStore, combineReducers } from 'redux';
 import { syDateFormat } from './Utils/Helper';
 
 var MyPage = React.createClass({
@@ -58,7 +61,7 @@ var MyPage = React.createClass({
             <td>{reference}</td>
             <td style={{width:'150px'}}>{syDateFormat(date_add)}</td>
             <td>{sypage_name}</td>
-            <td>{row.product.product_attribute_reference ? row.product.product_attribute_reference.toUpperCase() : row.product.reference.toUpperCase()}</td>
+            <td>{row.product.product_attribute_reference ? row.product.product_attribute_reference.toUpperCase() : (row.product.reference ? row.product.reference.toUpperCase() : '' )}</td>
             <td>{""}</td>
             <td>{row.product.quantity}</td>
             <td>{row.product.unit_price_tax_incl.toFixed(2)}</td>
@@ -97,4 +100,4 @@ var MyPage = React.createClass({
   }
 });
   console.log(window.data);
-  ReactDOM.render(<MyPage data={window.data}/>, document.getElementById('app'));
+  render(<MyPage data={window.data}/>, document.getElementById('app'));

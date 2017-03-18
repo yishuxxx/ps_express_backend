@@ -15,9 +15,12 @@ var helper = require('./src/Utils/Helper');
 var md5 = require('crypto-js/md5');
 var {settings} = require('./settings');
 
+var passport = require('passport');
+var LocalStrategy = require('passport-local').Strategy;
+
 var app = express();
 
-const _COOKIE_KEY_ = 'tdbbE5CUZ3pEzUVgSv7JPibBbmyVz7Dkdgifysdg18YCAzummGUxPpyb';
+const _COOKIE_KEY_ = settings._COOKIE_KEY_;
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -34,8 +37,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 //____MIDDLEWARE END
 
-var sequelize = new Sequelize('sycommy_shop', 'root', '1234', {
-  host: 'localhost',
+var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_passwd, {
+  host: settings.db_host,
   dialect: 'mysql',
 
   pool: {
@@ -48,10 +51,8 @@ var sequelize = new Sequelize('sycommy_shop', 'root', '1234', {
 
 
 var isUnique = function (modelName, field) {
-console.log('01');
-  return function(value, next) {
-console.log('02');
 
+  return function(value, next) {
 	sequelize.query(
 		`SELECT a.email FROM ps_customer as a WHERE a.email=:email`,
   	{ replacements: { email: value }, type: sequelize.QueryTypes.SELECT }).then(function(rows){
@@ -92,6 +93,8 @@ var CartRule = CartRuleFunc(Sequelize,sequelize);
 var {SpecificPriceFunc} = require('./src/models/specific_price');
 var SpecificPrice = SpecificPriceFunc(Sequelize,sequelize);
 
+var {EmployeeFunc} = require('./src/models/employee');
+var Employee = EmployeeFunc(Sequelize,sequelize);
 var {CustomerFunc} = require('./src/models/customer');
 var Customer = CustomerFunc(Sequelize,sequelize,uniqueValidator);
 //var {SYCustomerFunc} = require('./src/models/sy_customer');
@@ -269,7 +272,7 @@ var customer_admin_include =
 		model:Order.scope('admin')
 	}];
 
-var updateOrderDependencies = function(id_order){
+var updateOrderDependencies = function(Order){
 	var r = {};
 	var tax_multiplier = 1;
 	var total_products = 0;
@@ -281,31 +284,11 @@ var updateOrderDependencies = function(id_order){
 	var id_carrier;
 	var total_paid = 0;
 
-	return Sequelize.Promise.all([
-		Order.scope('admin').findOne({
-			include:[{
-				model:OrderDetail.scope('admin')
-			},{
-				model:OrderCartRule.scope('admin')
-			},{
-				model:OrderCarrier.scope('admin')
-			},{
-				model:Address.scope('admin'),
-				include:[{
-					model:State.scope('admin'),
-					include:[{
-						model:Zone.scope('admin')
-					}]
-				}]
-			},{
-				model:OrderPayment.scope('admin')
-			}],
-			where:{id_order:id_order}
-		}),
-		Tax.scope('admin').findOne({where:{id_tax:1}})
-	]).then(function(Includes){
-		r.Order = Includes[0];
-		r.Tax = Includes[1];
+	return Tax.scope('admin').findOne({
+		where:{id_tax:4}
+	}).then(function(Instance){
+		r.Order = Order;
+		r.Tax = Instance;
 
 		/*** CALCULATE TAX MULTIPLIER ***/
 		tax_multiplier = ((100.00+r.Tax.rate)/100);
@@ -392,11 +375,57 @@ var updateOrderDependencies = function(id_order){
 	
 }
 
-app.all([
-	'/asd/asd',
-	'/asd'
-],function(req,res,next){
+Employee.validPassword = function(password){
+	return (Employee.passwd === md5(_COOKIE_KEY_+password).toString() ? true : false);
+};
 
+passport.use(new LocalStrategy(
+  function(username, password, done) {
+    Employee.findOne({ email: username }, function(err, Employee) {
+      if (err) { return done(err); }
+      if (!Employee) {
+        return done(null, false, { message: 'Incorrect username.' });
+      }
+      if (!Employee.validPassword(password)) {
+        return done(null, false, { message: 'Incorrect password.' });
+      }
+      return done(null, Employee);
+    });
+  }
+));
+
+app.all([
+	'/order/get/:id',
+	'/order/update/:id'
+],function(req,res,next){
+	Order.scope('admin').findOne({
+	    include:order_include,
+		where:{id_order:req.params.id}
+	}).then(function(Instance){
+		if(Instance){
+			res.locals.Order = Instance;
+			next();
+		}else{
+			console.log('this order does not exist');
+			res.send({success:false,message:'this order does not exist'});
+		}
+	});
+})
+
+app.get('/login',function(req,res){
+	res.render('./login',{});
+})
+
+app.post('/login',function(req,res){
+	res.send({});
+})
+
+app.get('/policies/privacy',function(req,res){
+	res.render('./policies/privacy',{});
+})
+
+app.get('/privatereply',function(req,res){
+	res.render('privatereply',{});
 })
 
 app.get('/onsen', function (req, res) {
@@ -407,7 +436,7 @@ app.get('/products', function (req, res) {
 
 	var limit = req.query.limit ? req.query.limit : 5;
 	var offset = parseInt(req.query.offset ? req.query.offset : 0);
-	console.log(req.query);
+
 	sequelize.query(
 		`SELECT a.id_product FROM ps_product as a
 		WHERE 1 LIMIT :limit OFFSET :offset`,
@@ -423,7 +452,6 @@ app.get('/products', function (req, res) {
 		for(var i=0;i<rows.length;i++){
 			id_products.push(rows[i].id_product); 
 		}
-		console.log(id_products);
 		
 		sequelize.query(
 			`SELECT 
@@ -555,7 +583,7 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
 	return sequelize.transaction().then(function (t) {
 
 	Sequelize.Promise.all([
-		Tax.scope('admin').findOne({where:{id_tax:1}}),
+		Tax.scope('admin').findOne({where:{id_tax:4}}),
 		SYPage.scope('admin').findAll()
 	]).then(function(Instances){
 
@@ -759,21 +787,25 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
         return Promise.all(promises);
 
 	}).then(function(Instances){
+
 		r.OrderCartRules = Instances;
-
 		return t.commit();
-	}).then(function(){
 
-		return updateOrderDependencies(r.Order.id_order);
-		/*
+	}).then(function(){
+		
 		return Order.scope('admin').findOne({
 			include:order_include,
 			where:{id_order:r.Order.id_order}
 		});
-		*/
+
 	}).then(function(Instance){
 
-		r.Order2 = Instance;
+		if(Instance){
+			return updateOrderDependencies(Instance);
+		}
+	}).then(function(Instance){
+
+		r.Order = Instance;
 		res.json({success:true,result:r});
 
 	}).catch(function (err) {
@@ -786,11 +818,10 @@ app.post('/order/createfast', upload.array(), function (req, res, next) {
 
 	});
 
-	console.log(req.body);
 	res.json(req.body);
 });
 
-app.get('/order/create',function(req,res){
+app.post('/order/create',function(req,res){
 	var r={};
 	Order.build({
 		id_customer 	: req.query.id_customer,
@@ -811,20 +842,19 @@ app.get('/order/create',function(req,res){
 	});
 })
 
-app.get('/order/update',function(req, res){
-	console.log('SOMETHING IS NOT RIGHT');
-
+app.post('/order/update/:id',function(req, res){
 	const id_order = req.query.id_order;
 	const current_state = req.query.current_state;
 	const id_sypage = req.query.id_sypage;
 	var results = [];
 
 	Sequelize.Promise.all([
-		Order.findOne({where:{id_order:id_order}})
-	])
-	.then(function(answers){
+		Order.scope('admin').findOne({
+			where:{id_order:id_order},
+			include:order_include
+		})
+	]).then(function(answers){
 		results = answers;
-		console.log(results);
 		if(results && results[0]){
 			results[0].current_state = current_state;
 			results[0].id_sypage = id_sypage;
@@ -842,9 +872,9 @@ app.get('/order/update',function(req, res){
 	})
 })
 
-app.get('/order/:id',function(req, res){
+app.get('/order/get/:id',function(req, res){
 
-	updateOrderDependencies(req.params.id)
+	updateOrderDependencies(res.locals.Order)
 	.then(function(Instance){
 		return Order.scope('admin').findOne({
 		    include:order_include,
@@ -947,7 +977,7 @@ app.get('/orders',function(req, res){
 
 })
 
-app.get('/orderdetail/create',function(req,res){
+app.post('/orderdetail/create',function(req,res){
 
 	const id_product = req.query.id_product;
 	const id_product_attribute = req.query.id_product_attribute;
@@ -1045,7 +1075,7 @@ app.get('/orderdetail/create',function(req,res){
 
 })
 
-app.get('/orderdetail/delete',function(req,res){
+app.post('/orderdetail/delete',function(req,res){
 	var id_order_detail = req.query.id_order_detail;
 	var id_order = req.query.id_order;
 	OrderDetail.findOne({where:{id_order_detail:id_order_detail,id_order:id_order}})
@@ -1065,7 +1095,7 @@ app.get('/orderdetail/delete',function(req,res){
 
 })
 
-app.get('/address/update',function(req, res){
+app.post('/address/update',function(req, res){
 	var q = {};
 	var r = {};
 	q.id_address = req.query.id_address;
@@ -1099,7 +1129,7 @@ app.get('/address/update',function(req, res){
 	})
 })
 
-app.get('/address/create',function(req, res){
+app.post('/address/create',function(req, res){
 	var q = {};
 	var r = {};
 	q.id_order 		= req.query.id_order;
@@ -1141,7 +1171,7 @@ app.get('/address/create',function(req, res){
 	})
 })
 
-app.get('/ordercartrule/create',function(req,res){
+app.post('/ordercartrule/create',function(req,res){
 
 	var r = {};
 	var q = {};
@@ -1152,7 +1182,7 @@ app.get('/ordercartrule/create',function(req,res){
 		
 	Sequelize.Promise.all([
 		CartRule.scope('admin').findOne({where:{id_cart_rule:q.id_cart_rule}}),
-		Tax.scope('admin').findOne({where:{id_tax:1}})
+		Tax.scope('admin').findOne({where:{id_tax:4}})
 	]).then(function(Instance){
 
 		r.CartRule = Instance[0];
@@ -1178,7 +1208,7 @@ app.get('/ordercartrule/create',function(req,res){
 	})
 })
 
-app.get('/ordercartrule/delete',function(req,res){
+app.post('/ordercartrule/delete',function(req,res){
 
 	var r = {};
 	var q = {};
@@ -1207,7 +1237,7 @@ app.get('/ordercartrule/delete',function(req,res){
 	})
 })
 
-app.get('/ordercarrier/create',function(req,res){
+app.post('/ordercarrier/create',function(req,res){
 
 	var r = {};
 	var q = {};
@@ -1224,7 +1254,7 @@ app.get('/ordercarrier/create',function(req,res){
 	})
 })
 
-app.get('/ordercarrier/update',function(req,res){
+app.post('/ordercarrier/update',function(req,res){
 
 	var r = {};
 	var q = {};
@@ -1248,7 +1278,7 @@ app.get('/ordercarrier/update',function(req,res){
 	})
 })
 
-app.get('/orderpayment/create',function(req,res){
+app.post('/orderpayment/create',function(req,res){
 
 	var r = {};
 	var q = {};
@@ -1311,7 +1341,7 @@ app.get('/inputpage',function(req,res){
 			}]
 		}),
 		SYPage.scope('admin').findAll(),
-		Tax.scope('admin').findOne({where:{id_tax:1}}),
+		Tax.scope('admin').findOne({where:{id_tax:4}}),
   		Product.scope('admin').findAll({
   			include:[{
   				model:ProductAttribute.scope('admin'),
@@ -1389,7 +1419,7 @@ app.get('/fastpage',function(req,res){
 			}]
 		}),
 		SYPage.scope('admin').findAll(),
-		Tax.scope('admin').findOne({where:{id_tax:1}}),
+		Tax.scope('admin').findOne({where:{id_tax:4}}),
   		Product.scope('admin').findAll({
   			include:[{
   				model:ProductAttribute.scope('admin'),
@@ -1453,7 +1483,7 @@ app.get('/search/:table',function(req,res){
 	}
 })
 
-app.get('/customer/create',function(req,res){
+app.post('/customer/create',function(req,res){
 
 	var q = {};
 	q.firstname 	= req.query.firstname;
@@ -1510,7 +1540,7 @@ app.get('/customer/create',function(req,res){
 	});
 })
 
-app.get('/customer/:id',function(req,res){
+app.get('/customer/get/:id',function(req,res){
 	var q = {}
 	if(!req.params.id){
 		return false;

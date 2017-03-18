@@ -20,8 +20,6 @@ import FontIcon from 'material-ui/FontIcon';
 import {red500, yellow500, blue500, orange500} from 'material-ui/styles/colors';
 import { createStore, combineReducers } from 'redux';
 
-import qs from 'qs';
-
 import { twoDToOneDArray, checkExists, serialize, syDateFormat } from './Utils/Helper';
 
 // Needed for onTouchTap
@@ -307,11 +305,9 @@ class Main extends Component {
 
   handleChangeCustomerSearch = (value) => {
 
-    fetch(settings.base_dir+"/search/customer?email="+value, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+    fetch(settings.base_dir+"/search/customer?email="+value,{
+      method:'GET',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res) {
       if (res.ok) {
         res.json().then(function(data) {
@@ -339,11 +335,9 @@ class Main extends Component {
       x++;
     }
 
-    fetch(settings.base_dir+"/customer/"+customers[x].id_customer, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+    fetch(settings.base_dir+"/customer/get/"+customers[x].id_customer, {
+      method:'GET',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res) {
       if (res.ok) {
         res.json().then(function(data) {
@@ -487,11 +481,9 @@ class CustomerNew extends Component{
   }
 
   handleSubmitNewCustomer = (e) => {
-    fetch(settings.base_dir+"/customer/create?"+qs.stringify(rstore.getState().new_customer), {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+    fetch(settings.base_dir+"/customer/create?"+serialize(rstore.getState().new_customer),{
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res) {
       if (res.ok) {
         res.json().then(function(response) {
@@ -671,7 +663,7 @@ class AddressEdit extends Component{
     var base_url = crud === 'UPDATE' ? '/address/update' : '/address/create';
 
     fetch(settings.base_dir+base_url+"?"+serialize(obj),{
-      method: "GET",
+      method: "POST",
       headers: {"Content-Type": "application/x-www-form-urlencoded"}
     }).then(function(res){
       return res.json();
@@ -791,8 +783,10 @@ class OrderList extends Component{
   }
 
   handleOrderSelect = (event) => {    
-    fetch(settings.base_dir+"/order/"+event.target.name)
-    .then(function (res) {
+    fetch(settings.base_dir+"/order/get/"+event.target.name,{
+      method:'GET',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
+    }).then(function (res) {
       return res.json();
     }).then(function (response) {
       if(response.success){
@@ -811,8 +805,10 @@ class OrderList extends Component{
     const state = rstore.getState();
     var obj = {id_customer: state.Customer.id_customer};
 
-    fetch(settings.base_dir+"/order/create?"+serialize(obj))
-    .then(function (res) {
+    fetch(settings.base_dir+"/order/create?"+serialize(obj),{
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
+    }).then(function (res) {
       return res.json();
     }).then(function (response) {
       if(response.success){
@@ -909,8 +905,10 @@ class OrderEdit extends Component {
 
     var str = serialize(obj);
 
-   	fetch(settings.base_dir+"/order/update?"+str)
-  	.then(function (response) {
+   	fetch(settings.base_dir+"/order/update?"+str,{
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
+    }).then(function (response) {
   		return response.json();
   	}).then(function (response) {
       if(response.success){
@@ -922,7 +920,6 @@ class OrderEdit extends Component {
         alert('Ooops got some problem, summon Yishu~');
       }
   	});
-
   }
 
   render(){
@@ -1014,10 +1011,8 @@ class OrderDetailsEdit extends Component{
     var str = serialize(obj);
 
     fetch(settings.base_dir+"/orderdetail/create?"+str,{
-      method: "GET",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       if(res.ok){
         res.json().then(function(response){
@@ -1042,10 +1037,8 @@ class OrderDetailsEdit extends Component{
     var str = serialize(obj);
 
     fetch(settings.base_dir+"/orderdetail/delete?"+str,{
-      method: "GET",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded"
-      }
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       if(res.ok){
         res.json().then(function(response){
@@ -1085,8 +1078,8 @@ class OrderDetailsEdit extends Component{
     }
 
     fetch(settings.base_dir+'/ordercartrule/create?'+serialize(obj),{
-      method:'GET',
-      headers:{"Content-Type": "application/x-www-form-urlencoded"}
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       return res.json();
     }).then(function(response){
@@ -1110,8 +1103,8 @@ class OrderDetailsEdit extends Component{
     }
 
     fetch(settings.base_dir+'/ordercartrule/delete?'+serialize(obj),{
-      method:'GET',
-      headers:{"Content-Type": "application/x-www-form-urlencoded"}
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       return res.json();
     }).then(function(response){
@@ -1349,7 +1342,8 @@ class OrderCarrierCreate extends Component{
     obj.id_order = state.Customer.Order.id_order;
 
     fetch(settings.base_dir+'/ordercarrier/create?'+serialize(obj),{
-
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       return res.json();
     }).then(function(response){
@@ -1407,7 +1401,8 @@ class OrderCarrierUpdate extends Component{
     obj.id_order = state.Customer.Order.id_order;
 
     fetch(settings.base_dir+'/ordercarrier/update?'+serialize(obj),{
-
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       return res.json();
     }).then(function(response){
@@ -1518,7 +1513,8 @@ class OrderPaymentCreate extends Component{
     obj.id_order = state.Customer.Order.id_order;
 
     fetch(settings.base_dir+'/orderpayment/create?'+serialize(obj),{
-
+      method:'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
     }).then(function(res){
       return res.json();
     }).then(function(response){

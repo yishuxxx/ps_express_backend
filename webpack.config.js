@@ -3,7 +3,9 @@ module.exports = {
         inputpage:'./src/inputpage.js',
         orders:'./src/orders.js',
         onsen:'./src/onsen.js',
-        fastpage:'./src/fastpage.js'
+        fastpage:'./src/fastpage.js',
+        privatereply:'./src/privatereply',
+        login:'./src/login'
     },
     output: {
         filename: './public/javascripts/bundle_[name].js'

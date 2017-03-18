@@ -14,7 +14,6 @@ import SelectField from 'material-ui/SelectField';
 import MenuItem from 'material-ui/MenuItem';
 import AutoComplete from 'material-ui/AutoComplete';
 
-import qs from 'qs';
 import { twoDToOneDArray, checkExists, serialize, serialize2Level, serializeObject, syDateFormat } from './Utils/Helper';
 
 // Needed for onTouchTap
@@ -51,7 +50,7 @@ const initial_state = {
       },
       OrderDetails:[],
       OrderDetailCreate:{
-        product_index:0,
+        product_index:null,
         product_attribute_index:0,
         product_quantity:1,
         product_price:0.00
@@ -88,16 +87,19 @@ var calcPrice = function(){
   var product_attribute_index = state.Customer.Order.OrderDetailCreate.product_attribute_index;
 
   var tax_multiplier = (100+state.Tax.rate)/100;
-  var price = product_index ? 
-                (product_attribute_index ?
+  var price = ( (product_index || product_index===0) ? 
+                ( (product_attribute_index) ?
                   ((state.Products[product_index].price + state.Products[product_index].ProductAttributes[product_attribute_index].price) * tax_multiplier)
                 : (state.Products[product_index].price * tax_multiplier))
-              : null;
-
+              : null);
+  console.log(state.Products[product_index].ProductAttributes[product_attribute_index]);
+  console.log(state.Products[product_index]);
+  console.log(tax_multiplier);
+  console.log(price);
   var SpecPrices = state.Products[product_index].SpecificPrices;
   var id_default_group = state.Customer.id_default_group;
-
-  if(product_index && state.Products[product_index].ProductAttributes.length === 0){
+  console.log(SpecPrices);
+  if((product_index || product_index===0) && state.Products[product_index].ProductAttributes.length === 0){
     if(SpecPrices && (SpecPrices.length > 0)){
       SpecPrices.map((SpecPrice,index)=>{
         if((SpecPrice.id_group == id_default_group) && (SpecPrice.id_product_attribute == 0)){
@@ -105,7 +107,7 @@ var calcPrice = function(){
         }
       })
     }
-  }else if(product_index && (product_attribute_index == 0 || product_attribute_index)){
+  }else if((product_index || product_index===0) && (product_attribute_index == 0 || product_attribute_index)){
     if(SpecPrices && (SpecPrices.length > 0)){
       SpecPrices.map((SpecPrice,index)=>{
         if((SpecPrice.id_group == id_default_group) && (SpecPrice.id_product_attribute == state.Products[product_index].ProductAttributes[product_attribute_index].id_product_attribute)){
@@ -214,8 +216,6 @@ var updateOrderDependencies = function(state){
 
   r.Order.total_paid_real           = total_paid;
 
-  console.log(r.Order);
-
   state.Customer.Order = r.Order;
   return state;
 
@@ -224,7 +224,7 @@ var updateOrderDependencies = function(state){
 var full_initial_state = _.merge(window.store,initial_state);
 
 var reducer = function(state={},action=null){
-
+  console.log(action.type);
   switch(action.type){
     case 'CUSTOMER_CHANGE':
       state.Customer[action.name] = action.value;
@@ -274,8 +274,6 @@ var reducer = function(state={},action=null){
       state.Customer.Order.OrderDetails.push(OrderDetail);
       break;
     case 'ORDER_DETAIL_CREATE_CHANGE':
-      console.log('changed i think');
-      console.log(action);
       state.Customer.Order.OrderDetailCreate[action.name] = action.value;
       break;
     case 'ORDER_DETAIL_DELETE':
@@ -304,7 +302,6 @@ var reducer = function(state={},action=null){
       state.Customer.Order.OrderCartRules.splice(action.order_cart_rule_index, 1);
       break;
     case 'ORDER_CARRIER_CHANGE':
-      console.log('action.shipping_cost_tax_incl='+action.shipping_cost_tax_incl);
       state.Customer.Order.OrderCarrier.shipping_cost_tax_incl = action.shipping_cost_tax_incl;
       break;
     case 'ORDER_PAYMENT_CHANGE':
@@ -502,7 +499,7 @@ class CustomerInfo extends Component{
 
         <Row>
         <Col md={12}>
-          <select name="id_state" value={this.props.Address.id_state} onChange={this.handleAddressChange} style={{width:"80%",height:"35px",margin:"0px 20px"}}>
+          <select className="form-control" name="id_state" value={this.props.Address.id_state} onChange={this.handleAddressChange} style={{width:"80%",height:"35px",margin:"0px 20px"}}>
             {this.props.States.map((State,index)=>(
               <option name="id_state" key={index} value={State.id_state}>{State.name}</option>
             ))}
@@ -599,7 +596,7 @@ class OrderDetailsEdit extends Component{
       rstore.dispatch({
         type:'ORDER_DETAIL_CREATE_PRODUCT_SELECT',
         product_reference:chosenRequest,
-        product_index:index
+        product_index:parseInt(index,10)
       });
     }else{
       alert('you must choose a product')
@@ -609,7 +606,7 @@ class OrderDetailsEdit extends Component{
   handleProductAttributeSelect = (event) => {
     rstore.dispatch({
       type:"ORDER_DETAIL_CREATE_PRODUCT_ATTRIBUTE_SELECT",
-      product_attribute_index:event.target.value,
+      product_attribute_index:parseInt(event.target.value,10),
     })
   }
 
@@ -634,14 +631,14 @@ class OrderDetailsEdit extends Component{
   handleDelete = (event) => {
     rstore.dispatch({
       type:'ORDER_DETAIL_DELETE',
-      order_detail_index:event.target.attributes.getNamedItem('data-index').value
+      order_detail_index:parseInt(event.target.attributes.getNamedItem('data-index').value,10)
     });
   }
 
   handleOrderCartRuleSelect = (event) => {
     rstore.dispatch({
       type:'ORDER_CART_RULE_CREATE_CHANGE',
-      cart_rule_index:event.target[event.target.selectedIndex].getAttribute('data-index')
+      cart_rule_index:parseInt(event.target[event.target.selectedIndex].getAttribute('data-index'),10)
     })
   }
 
@@ -654,7 +651,7 @@ class OrderDetailsEdit extends Component{
   handleOrderCartRuleDeleteSubmit = (event) => {
     rstore.dispatch({
       type:'ORDER_CART_RULE_DELETE',
-      order_cart_rule_index:event.target.attributes.getNamedItem('data-index').value,
+      order_cart_rule_index:parseInt(event.target.attributes.getNamedItem('data-index').value,10),
     })
   }
 
@@ -707,7 +704,7 @@ class OrderDetailsEdit extends Component{
               <div style={{ fontSize:"16px",textAlign:"right"}}>{OrderDetail.total_price_tax_incl.toFixed(2)}</div>
             </td>
             <td style={{width:"50px"}}>
-              <button name="delete" data-index={index} onClick={this.handleDelete}>-</button>
+              <button className="btn btn-danger btn-sm" data-index={index} onClick={this.handleDelete}>-</button>
             </td>
           </tr>
         ))}
@@ -753,14 +750,14 @@ class OrderDetailsEdit extends Component{
               />
             </td>
             <td></td>
-            <td><button onClick={this.handleOrderDetailCreateSubmit}>ADD</button></td>
+            <td><button className="btn btn-primary btn-sm" onClick={this.handleOrderDetailCreateSubmit}>ADD</button></td>
           </tr>
 
           <tr>
             <td></td>
             <td>
               {product_index && this.props.Products[product_index].ProductAttributes.length!==0 ?
-              <select onChange={this.handleProductAttributeSelect} style={{width:"100%",height:"35px"}}>
+              <select className="form-control" onChange={this.handleProductAttributeSelect}>
                 {this.props.Products[product_index].ProductAttributes.map((ProductAttribute,index) => (
                   <option
                     value={index}
@@ -783,7 +780,7 @@ class OrderDetailsEdit extends Component{
             <td></td>
             <td colSpan="2">Discounts:</td>
             <td colSpan="2">
-              <select name="id_cart_rule" onChange={this.handleOrderCartRuleSelect} style={{height:"35px"}}>
+              <select className="form-control" name="id_cart_rule" onChange={this.handleOrderCartRuleSelect}>
                   <option key="empty" name="id_cart_rule" value="">{""}</option>
                 {this.props.CartRules.map((CartRule,index)=>(
                   <option 
@@ -797,7 +794,7 @@ class OrderDetailsEdit extends Component{
                 ))}
               </select>
             </td>
-            <td><button onClick={this.handleOrderCartRuleSubmit}>ADD</button></td>
+            <td><button className="btn btn-primary" onClick={this.handleOrderCartRuleSubmit}>ADD</button></td>
             <td></td>
           </tr>
 
@@ -811,6 +808,7 @@ class OrderDetailsEdit extends Component{
                 <td>{(OrderCartRule.value*(-1)).toFixed(2)}</td>
                 <td>
                   <button 
+                    className="form-control" 
                     data-index={index}
                     onClick={this.handleOrderCartRuleDeleteSubmit}
                   >-
@@ -847,6 +845,7 @@ class OrderDetailsEdit extends Component{
             <td colSpan="3">Total Shipping:</td>
             <td>
               <input 
+                className="form-control"
                 name="shipping_cost_tax_incl"
                 value={this.props.Order.OrderCarrier.shipping_cost_tax_incl}
                 onChange={this.handleOrderCarrierChange}
@@ -872,6 +871,7 @@ class OrderDetailsEdit extends Component{
             <td colSpan="3">Total Paid:</td>
             <td>
               <input 
+                className="form-control"
                 name="amount"
                 value={this.props.Order.OrderPayments[0].amount}
                 onChange={this.handleOrderPaymentChange}
@@ -937,7 +937,6 @@ class OrderReview extends Component{
           type:'RESPONSE_ERROR',
           errors:[]
         });
-        console.log(response);
       }else if(!response.success){
         rstore.dispatch({
           type:'RESPONSE_ERROR',
@@ -950,7 +949,7 @@ class OrderReview extends Component{
   render(){
     return(
       <section>
-        <button onClick={this.handleOrderSubmit}>SAVE</button>
+        <button className="btn btn-primary btn-lg" onClick={this.handleOrderSubmit}>SAVE</button>
         <ErrorMessages errors={this.props.errors}/>
       </section>
     );
