@@ -1,11 +1,13 @@
+import {settings} from '../settings';
 import React, {Component} from 'react';
 import {render} from 'react-dom';
 import { createStore } from 'redux';
 import { Grid, Row, Col, Button, FormControl } from 'react-bootstrap';
 
 var initial_state = {
-  username:'testuser',
-  password:'blablablabla'
+  username:'',
+  password:'',
+  redirect:window.store.redirect
 };
 
 var updateStateDependencies = function(state){
@@ -47,10 +49,6 @@ class LoginForm extends Component{
     console.log(nextProps);
   }
 
-  handleClick = (event) => {
-
-  }
-
   handleChange = (event) => {
     var changedState = {};
     changedState[event.target.name] = event.target.value;
@@ -66,19 +64,40 @@ class LoginForm extends Component{
   render(){
     return(
       <section>
-        <form action="<%= base_dir %>/login" method="post">
-            <div>
-                <label>{'Username:'}</label>
-                <input type="text" name="username" onChange={this.handleChange} value={this.state.username}/>
-            </div>
-            <div>
-                <label>{'Password:'}</label>
-                <input type="password" name="password" onChange={this.handleChange} value={this.state.password}/>
-            </div>
-            <div>
-                <button type="submit" onClick={this.handleClick}>Log In</button>
-            </div>
-        </form>
+        <h2 style={{textAlign:'center'}}>SY Online Venture</h2>
+        <h3 style={{textAlign:'center'}}>Log In</h3>
+        <br/>
+        <br/>
+        <br/>
+        <Row>
+          <Col md={4}></Col>
+          <Col md={4}>
+            <form className="form-horizontal" action={settings.base_dir+'/login'+(initial_state.redirect ? '?redirect='+initial_state.redirect : "")} method="post">
+
+              <div className="form-group">
+                <label className="col-sm-2 control-label">Email</label>
+                <div className="col-sm-10">
+                  <input className="form-control" type="text" name="username" onChange={this.handleChange} value={this.state.username}/>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="col-sm-2 control-label">Password</label>
+                <div className="col-sm-10">
+                  <input className="form-control" type="password" name="password" onChange={this.handleChange} value={this.state.password}/>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <div className="col-sm-offset-2 col-sm-10">
+                  <button type="submit" className="btn btn-default">Log in</button>
+                </div>
+              </div>
+
+            </form>
+          </Col>
+          <Col md={4}></Col>
+        </Row>
       </section>
     );
   }

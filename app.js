@@ -6,6 +6,7 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var multer = require('multer'); // v1.0.5
 var upload = multer(); // for parsing multipart/form-data
+var session = require('express-session')
 
 var Sequelize = require('sequelize');
 var Treeize   = require('treeize');
@@ -34,6 +35,10 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+//for login session
+app.use(session({ secret: 'keyboard cat' }));
+app.use(passport.initialize());
+app.use(passport.session());
 
 //____MIDDLEWARE END
 
@@ -372,27 +377,57 @@ var updateOrderDependencies = function(Order){
 
 		return r.Order.save();
 	})
-	
 }
 
-Employee.validPassword = function(password){
-	return (Employee.passwd === md5(_COOKIE_KEY_+password).toString() ? true : false);
-};
+passport.serializeUser(function(user, done) {
+  done(null, user.email);
+});
 
-passport.use(new LocalStrategy(
-  function(username, password, done) {
-    Employee.findOne({ email: username }, function(err, Employee) {
-      if (err) { return done(err); }
-      if (!Employee) {
-        return done(null, false, { message: 'Incorrect username.' });
-      }
-      if (!Employee.validPassword(password)) {
-        return done(null, false, { message: 'Incorrect password.' });
-      }
-      return done(null, Employee);
-    });
-  }
-));
+passport.deserializeUser(function(email, done) {
+	Employee.findOne({
+		where:{email: email}
+	}).then(function(Employee){
+		done(null, {email:Employee.email});
+	}).catch(function(err){
+		if (err) { return done(err); }
+	});
+});
+
+passport.use(new LocalStrategy( function(username, password, done) {
+
+	Employee.findOne({
+		where:{email: username}
+	}).then(function(Employee){
+	  if (!Employee) {
+	  	console.log('Incorrect username.');
+	    return done(null, false, { message: 'Incorrect username.' });
+	  }
+	  if (!(Employee.passwd.toLowerCase() === md5(_COOKIE_KEY_+password).toString().toLowerCase())) {
+	  	console.log('Incorrect password.');
+	  	console.log(Employee.passwd);
+	  	console.log(md5(_COOKIE_KEY_+password).toString());
+	    return done(null, false, { message: 'Incorrect password.' });
+	  }
+	  console.log('OK!');
+	  return done(null, {email:Employee.email});
+
+	}).catch(function(err){
+		if (err) { return done(err); }
+	});
+
+}));
+
+app.all([
+	'/order/get/:id',
+	'/order/update/:id',
+	'/fastpage',
+	'/inputpage'
+],function(req,res,next){
+    if(!req.user){
+    	res.redirect('/login?redirect='+req.path);
+    }
+    next();
+});
 
 app.all([
 	'/order/get/:id',
@@ -410,23 +445,65 @@ app.all([
 			res.send({success:false,message:'this order does not exist'});
 		}
 	});
-})
+});
 
 app.get('/login',function(req,res){
-	res.render('./login',{});
-})
+	res.render('./login',{data:{redirect:req.query.redirect}});
+});
+/*
+app.post('/login',
+  app.post('/login', passport.authenticate('local', { successRedirect: '/',
+                                                    failureRedirect: '/login' })),
+  function(req, res) {
+    // If this function gets called, authentication was successful.
+    // `req.user` contains the authenticated user.
+    if(req.query.redirect){
+    	res.redirect(req.query.redirect);
+    }else{
+    	res.redirect('/policies/privacy');
+    }
+});
+*/
+app.post('/login', function(req, res, next) {
+  passport.authenticate('local', function(err, user, info) {
+    if (err) { return next(err); }
+    if (!user) { return next(); }
+    req.logIn(user, function(err) {
+      if (err) { return next(err); }
+      return next();
+    });
+  })(req, res, next);
+},function(req, res) {
+    // If this function gets called, authentication was successful.
+    // `req.user` contains the authenticated user.
 
-app.post('/login',function(req,res){
-	res.send({});
-})
+    if(req.user){
+	    if(req.query.redirect){
+	    	res.redirect(req.query.redirect);
+	    }else{
+	    	res.redirect('/policies/privacy');
+	    }
+	}else if(!req.user){
+		res.redirect('/login?redirect='+req.query.redirect)
+	}else{
+		res.send({success:false,message:'error after login'});
+	}
+    
+});
+
+app.get('/logout',function(req,res,next){
+    req.logout();
+    req.session.destroy();
+    res.redirect("/login");
+});
 
 app.get('/policies/privacy',function(req,res){
 	res.render('./policies/privacy',{});
-})
+});
 
 app.get('/privatereply',function(req,res){
 	res.render('privatereply',{});
-})
+});
 
 app.get('/onsen', function (req, res) {
   res.render('onsen', { test: req.test });
