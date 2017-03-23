@@ -1,4 +1,5 @@
 import {settings} from '../settings';
+import {client_http_settings} from '../http_settings';
 import _ from 'lodash';
 import React, {Component} from 'react';
 import {render} from 'react-dom';
@@ -305,10 +306,9 @@ class Main extends Component {
 
   handleChangeCustomerSearch = (value) => {
 
-    fetch(settings.base_dir+"/search/customer?email="+value,{
-      method:'GET',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res) {
+    fetch(settings.base_dir+"/search/customer?email="+value,
+      client_http_settings.GET_JSON,
+    ).then(function(res) {
       if (res.ok) {
         res.json().then(function(data) {
           if(data.success){
@@ -335,10 +335,9 @@ class Main extends Component {
       x++;
     }
 
-    fetch(settings.base_dir+"/customer/get/"+customers[x].id_customer, {
-      method:'GET',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res) {
+    fetch(settings.base_dir+"/customer/get/"+customers[x].id_customer,
+      client_http_settings.GET_JSON,
+    ).then(function(res) {
       if (res.ok) {
         res.json().then(function(data) {
           if(data.success){
@@ -481,10 +480,9 @@ class CustomerNew extends Component{
   }
 
   handleSubmitNewCustomer = (e) => {
-    fetch(settings.base_dir+"/customer/create?"+serialize(rstore.getState().new_customer),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res) {
+    fetch(settings.base_dir+"/customer/create?"+serialize(rstore.getState().new_customer),
+      client_http_settings.POST_JSON
+    ).then(function(res) {
       if (res.ok) {
         res.json().then(function(response) {
           if(response.success){
@@ -662,10 +660,9 @@ class AddressEdit extends Component{
 
     var base_url = crud === 'UPDATE' ? '/address/update' : '/address/create';
 
-    fetch(settings.base_dir+base_url+"?"+serialize(obj),{
-      method: "POST",
-      headers: {"Content-Type": "application/x-www-form-urlencoded"}
-    }).then(function(res){
+    fetch(settings.base_dir+base_url+"?"+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){
@@ -783,10 +780,9 @@ class OrderList extends Component{
   }
 
   handleOrderSelect = (event) => {    
-    fetch(settings.base_dir+"/order/get/"+event.target.name,{
-      method:'GET',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function (res) {
+    fetch(settings.base_dir+"/order/get/"+event.target.name,
+      client_http_settings.GET_JSON
+    ).then(function (res) {
       return res.json();
     }).then(function (response) {
       if(response.success){
@@ -805,10 +801,9 @@ class OrderList extends Component{
     const state = rstore.getState();
     var obj = {id_customer: state.Customer.id_customer};
 
-    fetch(settings.base_dir+"/order/create?"+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function (res) {
+    fetch(settings.base_dir+"/order/create?"+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function (res) {
       return res.json();
     }).then(function (response) {
       if(response.success){
@@ -905,10 +900,9 @@ class OrderEdit extends Component {
 
     var str = serialize(obj);
 
-   	fetch(settings.base_dir+"/order/update?"+str,{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function (response) {
+   	fetch(settings.base_dir+"/order/update/"+state.Customer.Order.id_order+'?'+str,
+      client_http_settings.POST_JSON
+    ).then(function (response) {
   		return response.json();
   	}).then(function (response) {
       if(response.success){
@@ -1010,10 +1004,9 @@ class OrderDetailsEdit extends Component{
 
     var str = serialize(obj);
 
-    fetch(settings.base_dir+"/orderdetail/create?"+str,{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+"/orderdetail/create?"+str,
+      client_http_settings.POST_JSON
+    ).then(function(res){
       if(res.ok){
         res.json().then(function(response){
           if(response.success){
@@ -1036,10 +1029,9 @@ class OrderDetailsEdit extends Component{
     };
     var str = serialize(obj);
 
-    fetch(settings.base_dir+"/orderdetail/delete?"+str,{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+"/orderdetail/delete?"+str,
+      client_http_settings.POST_JSON
+    ).then(function(res){
       if(res.ok){
         res.json().then(function(response){
           if(response.success){
@@ -1077,10 +1069,9 @@ class OrderDetailsEdit extends Component{
       id_order:state.Customer.Order.id_order
     }
 
-    fetch(settings.base_dir+'/ordercartrule/create?'+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+'/ordercartrule/create?'+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){
@@ -1102,10 +1093,9 @@ class OrderDetailsEdit extends Component{
       id_order:state.Customer.Order.id_order
     }
 
-    fetch(settings.base_dir+'/ordercartrule/delete?'+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+'/ordercartrule/delete?'+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){
@@ -1341,10 +1331,9 @@ class OrderCarrierCreate extends Component{
     var obj = state.Customer.Order.OrderCarrierCreate;
     obj.id_order = state.Customer.Order.id_order;
 
-    fetch(settings.base_dir+'/ordercarrier/create?'+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+'/ordercarrier/create?'+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){
@@ -1400,10 +1389,9 @@ class OrderCarrierUpdate extends Component{
     var obj = state.Customer.Order.OrderCarrier;
     obj.id_order = state.Customer.Order.id_order;
 
-    fetch(settings.base_dir+'/ordercarrier/update?'+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+'/ordercarrier/update?'+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){
@@ -1512,10 +1500,9 @@ class OrderPaymentCreate extends Component{
     var obj = state.Customer.Order.OrderPaymentCreate;
     obj.id_order = state.Customer.Order.id_order;
 
-    fetch(settings.base_dir+'/orderpayment/create?'+serialize(obj),{
-      method:'POST',
-      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
-    }).then(function(res){
+    fetch(settings.base_dir+'/orderpayment/create?'+serialize(obj),
+      client_http_settings.POST_JSON
+    ).then(function(res){
       return res.json();
     }).then(function(response){
       if(response.success){

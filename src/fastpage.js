@@ -143,7 +143,7 @@ var updateOrderDependencies = function(state){
   /*** CALCULATE TOTAL_PRODUCTS ***/
   if(r.Order && r.Order.OrderDetails){
     r.Order.OrderDetails.map((OrderDetail,index)=>{
-      total_products = total_products + OrderDetail.product_price;
+      total_products = total_products + (OrderDetail.product_price * OrderDetail.product_quantity);
     })
   }
 
@@ -221,7 +221,8 @@ var updateOrderDependencies = function(state){
 
 }
 
-var full_initial_state = _.merge(window.store,initial_state);
+const full_initial_state = _.merge(window.store,initial_state);
+const full_initial_state_clone = JSON.parse(JSON.stringify(full_initial_state));
 
 var reducer = function(state={},action=null){
   console.log(action.type);
@@ -231,6 +232,8 @@ var reducer = function(state={},action=null){
       break;
     case 'ADDRESS_CHANGE':
       state.Customer.Order.Address[action.name] = action.value;
+      var postcode_list = action.value.match(/\d\d\d\d\d/g);
+      state.Customer.Order.Address['postcode'] = postcode_list[postcode_list.length-1]; 
       break;
     case 'ORDER_CHANGE':
       state.Customer.Order[action.name] = action.value;
@@ -309,10 +312,12 @@ var reducer = function(state={},action=null){
       break;
     case 'ORDER_SUBMIT_RESPONSE':
       break;
+    case 'RESPONSE_SUCCESS':
+      state = JSON.parse(JSON.stringify(full_initial_state_clone));
+      break;
     case 'RESPONSE_ERROR':
       state.errors = action.errors;
-      return state;
-
+      break;
     default:
       break;
   }
@@ -934,8 +939,7 @@ class OrderReview extends Component{
     }).then(function(response){
       if(response.success){
         rstore.dispatch({
-          type:'RESPONSE_ERROR',
-          errors:[]
+          type:'RESPONSE_SUCCESS'
         });
       }else if(!response.success){
         rstore.dispatch({

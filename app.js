@@ -423,10 +423,17 @@ app.all([
 	'/fastpage',
 	'/inputpage'
 ],function(req,res,next){
+	console.log('################## INSIDE req.user checking function');
+	console.log(req.user);
     if(!req.user){
-    	res.redirect('/login?redirect='+req.path);
+    	if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+    		res.send({success:false,redirect:'/login',message:'Please login first'});
+    	}else{
+			res.redirect('/login?redirect='+req.path);
+    	}
+    }else{
+    	next();
     }
-    next();
 });
 
 app.all([
@@ -1038,7 +1045,7 @@ app.get('/orders',function(req, res){
 		LEFT JOIN ps_state as e3 ON e.id_state = e3.id_state
 		LEFT JOIN ps_state as e4 ON e2.id_state = e4.id_state		
 		LEFT JOIN sy_page as f ON a.id_sypage = f.id_sypage
-		WHERE b2.id_lang=1 AND a4l.id_lang=1
+		WHERE a4l.id_lang=1
 		LIMIT :limit OFFSET :offset`,
 	{replacements:{limit:limit, offset:(req.query.offset?req.query.offset : 0)},type:sequelize.QueryTypes.SELECT})
 	.then(function(rows){
