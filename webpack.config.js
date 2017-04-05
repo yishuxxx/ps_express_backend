@@ -5,7 +5,9 @@ module.exports = {
         onsen:'./src/onsen.js',
         fastpage:'./src/fastpage.js',
         privatereply:'./src/privatereply',
-        login:'./src/login'
+        login:'./src/login',
+        chat:'./src/chat',
+        bulk:'./src/bulk',
     },
     output: {
         filename: './public/javascripts/bundle_[name].js'

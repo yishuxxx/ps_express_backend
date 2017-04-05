@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "DEBUG=express:* node ./bin/www"
+    "start": "DEBUG=express:* node app.js"
   },
   "dependencies": {
     "babel-core": "^6.22.1",
@@ -20,6 +20,7 @@
     "ejs": "^2.5.5",
     "express": "~4.14.0",
     "express-session": "^1.15.1",
+    "https": "^1.0.0",
     "jade": "~1.11.0",
     "lodash": "^4.17.4",
     "material-ui": "^0.16.7",
@@ -37,8 +38,11 @@
     "react-router": "^2.6.1",
     "react-tap-event-plugin": "^2.0.1",
     "redux": "^3.6.0",
+    "request": "^2.81.0",
+    "request-promise": "^4.2.0",
     "sequelize": "^3.29.0",
     "serve-favicon": "~2.3.0",
+    "socket.io": "^1.7.3",
     "webpack": "^2.2.1"
   },
   "devDependencies": {

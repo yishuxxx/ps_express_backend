@@ -55,11 +55,59 @@ var reducer = function(state={},action=null){
   console.log(action.type);
   switch(action.type){
     case 'PAGES_CREATE':
-      state.Pages = action.response;
+      FB.api('/me/accounts?access_token='+sy.userAccessToken,function(response){
+        sy.pageAuthResponse = response;
+        rstore.dispatch({
+          type:'PAGES_CREATE_RESPONSE_SUCCESS',
+          response:response
+        });
+        rerender();
+      });
       break;
-    case 'PAGE_POSTS_CREATE':
+
+    case 'PAGES_CREATE_RESPONSE_SUCCESS':
+      if(state.Pages && state.Pages.data && state.Pages.data.length >= 1){
+        action.response.data.map((Page,index)=>{
+          state.Pages.data[index].access_token = Page.access_token;
+        });
+      }else{
+        state.Pages = action.response;
+      }
+      break;
+
+    case 'PAGE_POSTS_CREATE_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts = action.response;
       break;
+
+    case 'PAGE_LABELS_CREATE':
+      var page_index = action.page_index;
+      var page_access_token = state.Pages.data[page_index].access_token;
+      FB.api('/me/labels?access_token='+page_access_token+'&limit=100',function(response){
+        if(response.data && response.data.length>0){
+          rstore.dispatch({
+            type:'PAGE_LABELS_CREATE_RESPONSE_SUCCESS',
+            page_index: page_index,
+            response:response
+          });
+          rerender();
+        }else{
+          alert('Cannot get the LABELS of this PAGE...')
+        }
+      });
+      break;
+
+    case 'PAGE_LABELS_CREATE_RESPONSE_SUCCESS':
+      state.Pages.data[action.page_index].Labels = action.response;
+      break;      
+
+    case 'LABEL_SELECT':
+      if(action.chosen_label_index !== -1){
+        state.Pages.data[action.page_index].chosen_label_index = action.chosen_label_index;
+      }else{
+        state.Pages.data[action.page_index].chosen_label_index = null;
+      }
+      break;  
+
     case 'POST_COMMENTS_LOAD_MORE':
     case 'POST_COMMENTS_REFRESH':
       var page_index = action.page_index;
@@ -92,6 +140,7 @@ var reducer = function(state={},action=null){
         alert('No more COMMENTS to load...')
       }
       break;
+
     case 'POST_COMMENTS_LOAD_MORE_RESPONSE_SUCCESS':
     case 'POST_COMMENTS_REFRESH_RESPONSE_SUCCESS':
 
@@ -113,31 +162,36 @@ var reducer = function(state={},action=null){
         Comment.can_reply_privately ? Post.comment_count_not_yet_pm += 1 : null;
       });
       break;
-    case 'PRIVATE_REPLY_MASS_REPLACE':
+
+    case 'PRIVATE_REPLY_BULK_REPLACE':
       if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
           state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0){
         var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
         Comments.map((Comment,index)=>{
-          Comment.can_reply_privately ? Comment.private_reply = action.private_reply : null;
+          Comment.private_reply = action.private_reply;
         });
       }
       break;
-    case 'COMMENT_REPLY_MASS_REPLACE':
+
+    case 'COMMENT_REPLY_BULK_REPLACE':
       console.log(action.comment_reply);
       if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
           state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0){
         var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
         Comments.map((Comment,index)=>{
-          Comment.can_reply_privately ? Comment.comment_reply = action.comment_reply : null;
+          Comment.comment_reply = action.comment_reply;
         });
       }
       break;
+
     case 'PRIVATE_REPLY_CHANGE':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].private_reply = action.private_reply;
       break;
+
     case 'COMMENT_REPLY_CHANGE':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].comment_reply = action.comment_reply;
       break;
+
     case 'PRIVATE_REPLY_SUBMIT':
       var pa_i = action.page_index;
       var po_i = action.post_index;
@@ -148,7 +202,7 @@ var reducer = function(state={},action=null){
       
       var page_access_token = state.Pages.data[pa_i].access_token;
       var private_reply = action.private_reply;
-      
+      console.log(private_reply);
       if(private_reply.length >= 2){
         FB.api(
           '/'+comment_id+'/private_replies?access_token='+page_access_token+'&message='+private_reply,
@@ -172,13 +226,44 @@ var reducer = function(state={},action=null){
         alert('Please input a longer message before sending...');
       }
       break;
+
     case 'PRIVATE_REPLY_SUBMIT_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].can_reply_privately = false;
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Conversation = {data:[{message:action.private_reply,from:{id:action.page_id}}]};
       break;
+
     case 'COMMENT_REPLY_SUBMIT_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].comment_count += 1;
       break;
+
+    case 'LABEL_APPLY':
+      var page_index = action.page_index;
+      var post_index = action.post_index;
+      var comment_index = action.comment_index;
+
+      var chosen_label_index = state.Pages.data[page_index].chosen_label_index;
+      if(chosen_label_index || chosen_label_index === 0){
+      var page_access_token = state.Pages.data[page_index].access_token;
+      var uid = state.Pages.data[page_index].Posts.data[post_index].Comments.data[comment_index].from.id;
+      var label_id = state.Pages.data[page_index].Labels.data[state.Pages.data[page_index].chosen_label_index].id; 
+        FB.api(
+          '/'+label_id+'/users?access_token='+page_access_token+'&user_ids=['+uid+']',
+          'POST',
+          function(response){
+            if(response.success){
+              rstore.dispatch({
+                type:'LABEL_APPLY_RESPONSE_SUCCESS'
+              });
+            }else{
+              alert('Failed to apply LABEL to USER...');
+            }
+        });
+      }
+      break;
+
+    case 'LABEL_APPLY_RESPONSE_SUCCESS':
+      break;
+
     case 'COMMENT_GET_COMMENT_REPLY':
       var pa_i = action.page_index;
       var po_i = action.post_index;
@@ -203,9 +288,11 @@ var reducer = function(state={},action=null){
           }
       });
       break;
+
     case 'COMMENT_GET_COMMENT_REPLY_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Comments = action.response;
       break;
+
     case 'GET_CONVERSATION_MESSAGES':
       var pa_i = action.page_index;
       var po_i = action.post_index;
@@ -230,9 +317,11 @@ var reducer = function(state={},action=null){
           }
       });
       break;
+
     case 'GET_CONVERSATION_MESSAGES_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Conversation = action.response;
       break;
+
     case 'MESSAGE_SEND':
       var pa_i = action.page_index;
       var po_i = action.post_index;
@@ -257,29 +346,44 @@ var reducer = function(state={},action=null){
           }
       });
       break;
+
     case 'MESSAGE_SEND_RESPONSE_SUCCESS':
       console.log(action.response);
       break;
+
     case 'AUTO_REFRESH_STRING_CHANGE':
       state.auto_refresh_string = action.auto_refresh_string;
       break;
+
     case 'AUTO_REFRESH_QUEUE_SHIFT':
       state.auto_refresh_queue.shift();
       break;
+
     case 'AUTO_REFRESH_TOGGLE':
       state.auto_refresh_is_on = !state.auto_refresh_is_on;
       break;
+
     case 'AUTO_REFRESH_QUEUE_INIT':
       state.auto_refresh_queue = [];
-      Array(state.auto_refresh_repeat).fill().map((x,i)=>{
+      var repeat = state.auto_refresh_repeat;
+      Array(repeat).fill().map((x,i)=>{
         state.auto_refresh_queue = state.auto_refresh_queue.concat(state.auto_refresh_list);
       })
+      break;
+
     case 'AUTO_REFRESH_REPEAT_CHANGE':
       state.auto_refresh_repeat = action.auto_refresh_repeat;
       break;
+
     case 'AUTO_REFRESH_INTERVAL_CHANGE':
       state.auto_refresh_interval = action.auto_refresh_interval;
       break;
+
+    case 'GET_COMMENT_COUNTS_RESPONSE_SUCCESS':
+      state.CommentCounts = action.CommentCounts;
+      console.log(state.CommentCounts);
+      break;
+
     default:
       break;
   }
@@ -290,27 +394,16 @@ var reducer = function(state={},action=null){
 
 window.rstore = createStore(reducer,initial_state);
 
-
 var sy = {
   scopesNeeded:{
-    scope:'read_page_mailboxes,manage_pages,publish_pages',//pages_messaging,pages_messaging_subscriptions
+    scope:'read_page_mailboxes,manage_pages,publish_pages,pages_show_list',//pages_messaging,pages_messaging_subscriptions
   },
   page_access_token:"EAAXQvp1ley8BAAm9ZAplvIEFZCYj6Ghu8xme7G7sFRd7Gh6EPmYUYCOeekxzJD2fAIC5ziKWz0A0PQI1L35SspWUMZAhFZA9oa4TypnCDW2LZBSwZBdZB8SuI81YwDdOw4UIsB11jkqyqWgxNHQXaHOBP5Q0xjkuG9ZAwWyfyoLdqZCZBNpZAAz6VtiUMpUOSu2oaAZD",
   page_access_token_messenger:"EAAVYvwYDnMcBAKde6kLAxgrzJAEA6FExnfdO8kX2NV5XGqlnv9A80bprje8X7rpyneQ2DrmfvEM5LqHpUd0ebDGZBOLMMebK7eZCpMCqmuhBOpe5dDGb54zYPLbvb63A2hHs9AvZBzRBfQqZBh7FJoAGLTspUKt94ihC6zt2ZBgZDZD"
 };
 
-sy.getPageAccessToken = function(){
-  FB.api('/me/accounts',function(response){
-    sy.pageAuthResponse = response;
-    rstore.dispatch({
-      type:'PAGES_CREATE',
-      response:response
-    });
-    rerender();
-  });
-}
-
 sy.login = function(){
+  setTimeout(function(){ sy.login(); }, 1800*1000);
   FB.getLoginStatus(function(response){
     if (response.status === 'connected') {
       sy.is_login_fb = true;
@@ -323,8 +416,9 @@ sy.login = function(){
       var accessToken = response.authResponse.accessToken;
       sy.uid = uid;
       sy.userAccessToken = accessToken;
-      sy.getPageAccessToken();
-
+      rstore.dispatch({
+        type:'PAGES_CREATE'
+      });
     } else if (response.status === 'not_authorized') {
         FB.login(function(response){
           if (response.status === 'connected') {
@@ -333,7 +427,9 @@ sy.login = function(){
             var accessToken = response.authResponse.accessToken;
             sy.uid = uid;
             sy.userAccessToken = accessToken;
-            sy.getPageAccessToken();
+            rstore.dispatch({
+              type:'PAGES_CREATE'
+            });
           }
         },sy.scopesNeeded);
     } else {
@@ -344,7 +440,9 @@ sy.login = function(){
             var accessToken = response.authResponse.accessToken;
             sy.uid = uid;
             sy.userAccessToken = accessToken;
-            sy.getPageAccessToken();
+            rstore.dispatch({
+              type:'PAGES_CREATE'
+            });
           }
         },sy.scopesNeeded);
     }
@@ -517,7 +615,23 @@ sy.queueAutoRefresh = function(){
 }
 
 window.sy = sy;
+/*
+class OutputComments extends Component{
+  constructor(props,context) {
+    super(props,context);
+  }
 
+  render(){
+    return(
+      <table>
+      <tbody>
+        <tr><td></td></tr>
+      </tbody>
+      </table>
+    );
+  }
+}
+*/
 class AutoReplyApp extends Component{
   constructor(props,context) {
     super(props,context);
@@ -543,6 +657,12 @@ class AutoReplyApp extends Component{
               <PageManager key={Page.id} index={index} Page={Page}/>
             )))
           : null}
+
+          <CommentHistory 
+            CommentCounts={this.props.state.CommentCounts}
+            auto_refresh_list={this.props.state.auto_refresh_list}
+            Pages={this.props.state.Pages}
+          />
         </Col>
         </Row>
       </section>
@@ -550,6 +670,78 @@ class AutoReplyApp extends Component{
   }
 }
 
+class CommentHistory extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {post_id:''};
+  }
+
+  handleGetCommentCount = (event) => {
+    var post_id = this.state.post_id;
+    fetch('http://www.sy.com.my/fbhook/countcomments?post_id='+post_id,{
+      method: "GET",
+      headers: {"Content-Type": "application/x-www-form-urlencoded"}
+    }).then(function (res) {
+      return res.json();
+    }).then(function(response){
+      rstore.dispatch({
+        type:'GET_COMMENT_COUNTS_RESPONSE_SUCCESS',
+        CommentCounts:response
+      });
+      rerender();
+    });
+  }
+
+  handlePostIdChange = (event) => {
+    this.setState({post_id:event.target.value});
+  }
+
+  render(){
+    return(
+      <section id="comment_counter">
+        <Row>
+          <Col md={4}>
+            <input className="form-control" type="text" name="post_id" onChange={this.handlePostIdChange}/>
+          
+            {this.props.auto_refresh_list ?
+            <div>
+              {this.props.auto_refresh_list.map((row,index)=>{
+                var Post = this.props.Pages.data[row[0]].Posts.data[row[1]];
+                return (
+                  <div key={'post_id_'+index}>
+                    <a style={{fontSize:'10px'}}>
+                        {'#'  +(row[0]+1)+'-'+(row[1]+1)+
+                         '] ' +Post.id}
+                    </a>
+                  </div>
+                );
+              })}
+            </div>
+            : null}
+
+          </Col>
+          <Col md={2}>
+            <button className="btn btn-primary" onClick={this.handleGetCommentCount}>REFRESH COUNT</button>
+          </Col>    
+          <Col md={4}>
+            <table className="table">
+            <tbody>
+              {this.props.CommentCounts
+              ? (this.props.CommentCounts.map((CommentCount,index)=>(
+                  <tr key={'comment_count_'+index}>
+                    <td>{CommentCount.date.split('T')[0]}</td>
+                    <td>{CommentCount.count}</td>
+                  </tr>
+                )))
+              : null}
+            </tbody>
+            </table>
+          </Col>   
+        </Row>
+      </section>
+    );
+  }
+}
 
 class AutoRefreshSetup extends Component{
   constructor(props,context) {
@@ -568,17 +760,19 @@ class AutoRefreshSetup extends Component{
       auto_refresh_string:event.target.value
     });
   }
+
   handleAutoRefreshRepeatChange = (event) => {
     rstore.dispatch({
       type:'AUTO_REFRESH_REPEAT_CHANGE',
-      auto_refresh_repeat:event.target.value
+      auto_refresh_repeat:parseInt(event.target.value,10)
     });
     rerender();
   }
+
   handleAutoRefreshIntervalChange = (event) => {
     rstore.dispatch({
       type:'AUTO_REFRESH_INTERVAL_CHANGE',
-      auto_refresh_interval:event.target.value
+      auto_refresh_interval:parseInt(event.target.value,10)
     });
     rerender();
   }
@@ -601,25 +795,40 @@ class AutoRefreshSetup extends Component{
 
   handleFBLogin = (event) => {
     sy.login();
+    rerender();
   }
 
   handleFBLogout = (event) => {
     FB.logout();
+    rerender();
   }
 
   render(){
     return(
-      <section style={{position:'fixed',top:'0px',backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px"}}>
+      <section style={{position:'fixed',top:'0px',backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px",overflowY:'auto'}}>
         {
           sy.is_login_fb 
           ? <button onClick={this.handleFBLogout} className="btn btn-primary">{'Logout Facebook'}</button>
           : <button onClick={this.handleFBLogin} className="btn btn-primary">{'Login Facebook'}</button>
         }
-        <div><span>List of posts to auto refresh:</span><textarea className="form-control" value={this.state.auto_refresh_string} onChange={this.handleAutoRefreshStringChange} placeholder={'eg: \n1-1\n1-2\n1-3'}/></div>
-        <div><span>Interval(sec):</span><input className="form-control" value={this.props.auto_refresh_interval} onChange={this.handleAutoRefreshIntervalChange}/></div>
-        <div><span>Repeat(N)</span><input className="form-control" value={this.props.auto_refresh_repeat} onChange={this.handleAutoRefreshRepeatChange}/></div>
+        <div><span>List of posts to auto refresh:</span><textarea className="form-control" value={this.state.auto_refresh_string ? this.state.auto_refresh_string : ''} onChange={this.handleAutoRefreshStringChange} placeholder={'eg: \n1-1\n1-2\n1-3'}/></div>
+        <div>
+          <span>Interval(sec):</span>
+          <input 
+            className="form-control" 
+            value={this.props.auto_refresh_interval ? this.props.auto_refresh_interval : ''} 
+            onChange={this.handleAutoRefreshIntervalChange}
+          />
+        </div>
+        <div>
+          <span>Repeat(N)</span>
+          <input 
+            className="form-control" 
+            value={this.props.auto_refresh_repeat ? this.props.auto_refresh_repeat : ''} 
+            onChange={this.handleAutoRefreshRepeatChange}
+          />
+        </div>
         <Button onClick={this.handleAutoRefreshToggle} bsStyle="primary">{this.props.auto_refresh_is_on ? 'STOP' : 'START'}</Button>
-        
 
         {this.props.auto_refresh_list ?
         <div>
@@ -663,10 +872,15 @@ class PageManager extends Component{
     var page_id = event.target.attributes.getNamedItem('data-id').value;
     var page_index = event.target.attributes.getNamedItem('data-index').value;
 
+    rstore.dispatch({
+      type:'PAGE_LABELS_CREATE',
+      page_index: page_index
+    });
+
     FB.api('/'+page_id+'/posts?limit=100',function(response){
       if(response.data && response.data.length>0){
         rstore.dispatch({
-          type:'PAGE_POSTS_CREATE',
+          type:'PAGE_POSTS_CREATE_RESPONSE_SUCCESS',
           page_index: page_index,
           response:response
         });
@@ -677,6 +891,18 @@ class PageManager extends Component{
     });
   }
 
+  handleLabelSelect = (event) => {
+    var chosen_label_index = parseInt(event.target[event.target.selectedIndex].getAttribute('data-label-index'),10);
+    var page_index = this.props.index;
+
+    rstore.dispatch({
+      type:'LABEL_SELECT',
+      page_index: page_index,
+      chosen_label_index:chosen_label_index
+    });
+    rerender();
+  }
+
   render(){
     return(
       <section id="page_manager" style={greyborder}>
@@ -684,6 +910,31 @@ class PageManager extends Component{
         <span name="name">{this.props.Page.name}</span>
         <br/>
         <button className="btn btn-default btn-small" data-index={this.props.index} data-id={this.props.Page.id} onClick={this.handleClick}>GET POSTS</button>
+        
+
+        { (this.props.Page.Labels && this.props.Page.Labels.data.length >= 1)
+        ? <Row>
+            <Col md={1}></Col>
+            <Col md={5}>
+              <div className="form-group">
+                <label className="col-sm-4 control-label">Label after PM:</label>
+                <div className="col-sm-8">
+                  <select className="form-control" onChange={this.handleLabelSelect}>
+                      <option key={'label_empty'} value={''} data-label-index={'-1'}>{''}</option>
+                    {this.props.Page.Labels.data.map((Label,index)=>(
+                      <option key={Label.id} value={Label.id} data-label-index={index}>{Label.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </Col>
+            <Col md={3}>
+              <span>Label Chosen : {(this.props.Page.chosen_label_index || this.props.Page.chosen_label_index == 0) ? this.props.Page.Labels.data[this.props.Page.chosen_label_index].name : ''}</span>
+            </Col>
+          </Row>
+          : null
+        }
+
         { (this.props.Page.Posts && this.props.Page.Posts.data)
           ? (this.props.Page.Posts.data.map((Post,index)=>(
               <PostManager 
@@ -694,7 +945,8 @@ class PageManager extends Component{
                 Post={Post}
               />
             )))
-          : null }
+          : null 
+        }
       </section>
     );
   }
@@ -740,7 +992,7 @@ class PostManager extends Component{
 
   handlePrivateReplyBulkClick = (event) => {
     rstore.dispatch({
-      type:'PRIVATE_REPLY_MASS_REPLACE',
+      type:'PRIVATE_REPLY_BULK_REPLACE',
       page_index: this.props.page_index,
       post_index: this.props.index,
       private_reply:this.state.private_reply_bulk
@@ -754,7 +1006,7 @@ class PostManager extends Component{
 
   handleCommentReplyBulkClick = (event) => {
     rstore.dispatch({
-      type:'COMMENT_REPLY_MASS_REPLACE',
+      type:'COMMENT_REPLY_BULK_REPLACE',
       page_index: this.props.page_index,
       post_index: this.props.index,
       comment_reply:this.state.comment_reply_bulk
@@ -798,7 +1050,7 @@ class PostManager extends Component{
           <Col md={2}>
             <textarea 
               className="form-control"
-              value={this.state.comment_reply_bulk}
+              value={this.state.comment_reply_bulk ? this.state.comment_reply_bulk : ''}
               onChange={this.handleCommentReplyBulkChange}
               placeholder="type comment reply here to bulk fill" 
             />
@@ -812,7 +1064,7 @@ class PostManager extends Component{
           <Col md={4}>
             <textarea 
               className="form-control"
-              value={this.state.private_reply_bulk}
+              value={this.state.private_reply_bulk ? this.state.private_reply_bulk : ''}
               onChange={this.handlePrivateReplyBulkChange} 
               placeholder="type private reply here to bulk fill" 
             />
@@ -878,13 +1130,19 @@ class CommentManager extends Component{
     var pa_i = event.target.attributes.getNamedItem('data-page-index').value;
     var po_i = event.target.attributes.getNamedItem('data-post-index').value;
     var c_i = event.target.attributes.getNamedItem('data-index').value;
-
+    console.log(this.state.private_reply);
     rstore.dispatch({
       type:'PRIVATE_REPLY_SUBMIT',
       page_index:pa_i,
       post_index:po_i,
       comment_index:c_i,
       private_reply:this.state.private_reply
+    });
+    rstore.dispatch({
+      type:'LABEL_APPLY',
+      page_index: this.props.page_index,
+      post_index: this.props.post_index,
+      comment_index: this.props.index
     });
     rerender();
   }
@@ -966,6 +1224,15 @@ class CommentManager extends Component{
     rerender();
   }
 
+  handleLabelApply = (event) => {
+    rstore.dispatch({
+      type:'LABEL_APPLY',
+      page_index: this.props.page_index,
+      post_index: this.props.post_index,
+      comment_index: this.props.index
+    });
+  }
+
   render(){
     return(
       <section id="comment_manager" style={greenborderbottom}>
@@ -990,7 +1257,7 @@ class CommentManager extends Component{
                 data-index={this.props.index}
                 data-id={this.props.Comment.id}
                 name="comment_reply"
-                value={this.state.comment_reply}
+                value={this.state.comment_reply ? this.state.comment_reply : ''}
                 onChange={this.handleCommentReplyChange}
               ></textarea> : null}
 
@@ -1042,7 +1309,7 @@ class CommentManager extends Component{
                 data-index={this.props.index}
                 data-id={this.props.Comment.id}
                 name="private_reply" 
-                value={this.state.private_reply} 
+                value={this.state.private_reply ? this.state.private_reply : ''} 
                 onChange={this.handlePrivateReplyChange}
               /> : null}  
 
@@ -1073,6 +1340,15 @@ class CommentManager extends Component{
               : null
             }
 
+            {this.props.Comment.private_reply_conversation
+              ? <button
+                  className="btn btn-default btn-sm"
+                  onClick={this.handleLabelApply}
+                >Add Label
+                </button> 
+              : null
+            }
+
             {this.props.Comment.Conversation 
 
               ? <MessageManager 
@@ -1081,6 +1357,7 @@ class CommentManager extends Component{
                 comment_index={this.props.index}
                 page_id={this.props.page_id}
                 Conversation={this.props.Comment.Conversation}
+                key={'Conversation'+this.props.Comment.id}
               />
               : null
             }
@@ -1122,7 +1399,7 @@ class MessageManager extends Component{
       <section id="message_manager">
         <section style={{backgroundColor:'#f7f7f7',border:'1px solid #ccc',padding:'5px',borderRadius:'3px',maxHeight:'400px',overflowX:'hidden',overFlowY:'auto'}}>
           {this.props.Conversation.data.map((Element,index)=>{
-            var Message = this.props.Conversation.data[this.props.Conversation.data.length - 1 - index]
+            var Message = this.props.Conversation.data[this.props.Conversation.data.length - 1 - index];
             return (
               <div key={Message.id} style={(Message.from.id === this.props.page_id) ? message_from_self : message_from_other}>
                 <span style={{display:'inline-block',maxWidth:'90%',backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px",textAlign:'left'}}>{Message.message.split('\n').map((item, key) => (<span key={key}>{item}<br/></span>))}</span>

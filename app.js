@@ -1,4 +1,5 @@
 var express = require('express');
+var https = require('https');
 var path = require('path');
 var favicon = require('serve-favicon');
 var logger = require('morgan');
@@ -6,12 +7,18 @@ var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
 var multer = require('multer'); // v1.0.5
 var upload = multer(); // for parsing multipart/form-data
-var session = require('express-session')
+var session = require('express-session');
+var request = require('request');
+var rq = require('request-promise');
+var crypto = require('crypto');
 
 var Sequelize = require('sequelize');
 var Treeize   = require('treeize');
-var index = require('./routes/index');
-var users = require('./routes/users');
+
+//var index = require('./routes/index');
+//var users = require('./routes/users');
+var Msg = require("./routes/msg");
+
 var helper = require('./src/Utils/Helper');
 var md5 = require('crypto-js/md5');
 var {settings} = require('./settings');
@@ -21,7 +28,30 @@ var LocalStrategy = require('passport-local').Strategy;
 
 var app = express();
 
+var debug = require('debug')('express-skel:server');
+var http = require('http');
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+var server = http.createServer(app);
+var io = require('socket.io')(server);
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
 const _COOKIE_KEY_ = settings._COOKIE_KEY_;
+
+var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_passwd, {
+  host: settings.db_host,
+  dialect: 'mysql',
+
+  pool: {
+    max: 5,
+    min: 0,
+    idle: 10000
+  },
+
+});
+var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io);
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -39,21 +69,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({ secret: 'keyboard cat' }));
 app.use(passport.initialize());
 app.use(passport.session());
+//for routing
+app.use('/msg', msg.router);
 
 //____MIDDLEWARE END
-
-var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_passwd, {
-  host: settings.db_host,
-  dialect: 'mysql',
-
-  pool: {
-    max: 5,
-    min: 0,
-    idle: 10000
-  },
-
-});
-
 
 var isUnique = function (modelName, field) {
 
@@ -1735,4 +1754,63 @@ app.use(function(err, req, res, next) {
   res.render('error');
 });
 
-module.exports = app;
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
+
