@@ -66,7 +66,13 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 //for login session
-app.use(session({ secret: 'keyboard cat' }));
+app.use(session({
+    secret: 'keyboard cat',
+    proxy: true,
+    resave: true,
+    saveUninitialized: false
+}));
+
 app.use(passport.initialize());
 app.use(passport.session());
 //for routing

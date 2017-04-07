@@ -877,7 +877,7 @@ class PageManager extends Component{
       page_index: page_index
     });
 
-    FB.api('/'+page_id+'/posts?limit=100',function(response){
+    FB.api('/'+page_id+'/posts?limit=100&fields=is_hidden,message,story,id,created_time',function(response){
       if(response.data && response.data.length>0){
         rstore.dispatch({
           type:'PAGE_POSTS_CREATE_RESPONSE_SUCCESS',

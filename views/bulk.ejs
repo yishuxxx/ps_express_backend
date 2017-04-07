@@ -6,20 +6,29 @@
     <!--link rel="stylesheet" href="/css/chat.css"-->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/latest/css/bootstrap.min.css"/>
     <style>
-      .ConversationListContainer{border:1px solid #f7f7f7;}
+      .ConversationListContainer{border:1px solid #f7f7f7;padding:5px;}
       .ConversationList{height:1000px;overflow-y: scroll;}
-      .ConversationCard{border:1px solid #f7f7f7;}
+      .ConversationCard{border:1px solid #f7f7f7;padding:3px;}
       .ConversationCard .sender_name{font-size:14px;}
       .ConversationCard .updated_time{text-align:right;font-size:14px;}
       .ConversationCard .message{white-space:nowrap;font-size:12px;color:#777;}
+      .ConversationCard .queued_message{white-space:nowrap;font-size:12px;}
+      .ConversationCard .sent_message{white-space:nowrap;font-size:12px;}
       .ConversationCard.unread{font-weight:bold;}
+      .ConversationCard .snippet{cursor:pointer;}
+
+      .PageButtonList{padding:5px;}
+      .BulkMessageTool{padding:5px;}
+      .load_more_repeat{width:60px;}
+
+      .ConversationList div.header{font-weight:bold;}
     </style>
   </head>
   <body>
     <div id="app"></div>
 
     <!--script src="https://code.jquery.com/jquery-1.10.2.min.js"></script-->
-    <script src="/socket.io/socket.io.js"></script>
+    <script src="<%= base_dir %>/socket.io/socket.io.js"></script>
     <script src="<%= base_dir %>/javascripts/bundle_bulk.js"></script>
   </body>
 </html>
