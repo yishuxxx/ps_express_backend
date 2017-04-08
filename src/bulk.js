@@ -285,7 +285,7 @@ class ConversationCard extends Component{
   }
 
   handleHighlight = (event) => {
-
+    event.stopPropagation();
     if(event.shiftKey){
       rstore.dispatch({
         type:'CONVERSATION_HIGHLIGHT_SHIFT_CLICK',
@@ -302,6 +302,7 @@ class ConversationCard extends Component{
   }
 
   handleShowMoreMessages = (event) => {
+    event.stopPropagation();
     this.setState({show_more_messages:true});
   }
 
@@ -319,19 +320,22 @@ class ConversationCard extends Component{
       <section 
         className={ "ConversationCard"
                     +(this.props.Conversation.unread_count ? ' unread' : '')
-                    +(this.props.Conversation.highlight ? ' alert-info' : '')
                     +(this.props.Conversation.queued_message ? ' alert-warning' : '')
                     +(this.props.Conversation.sent_message ? ' alert-success' : '')
+                    +(this.props.ConversationC && this.props.Conversation.id === this.props.ConversationC.id ? ' active' : '')                    
                   }
+        onClick={this.handleGetMessages}
       >
         <Row>
           <Col md={1}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
-          <Col md={4}>
-            <div className="sender_name">
-              <button className="btn btn-default btn-sm" onClick={this.handleGetMessages}>
+          <Col md={7}>
+            <div>
+              <span className="sender_name">
                 {this.props.Conversation.senders.data[0].name}
-              </button>
+              </span>
+              <span className="updated_time">{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</span>
             </div>
+
             <span className="message" onClick={this.handleShowMoreMessages}>
               {
                 this.state.show_more_messages 
@@ -342,7 +346,6 @@ class ConversationCard extends Component{
               }
             </span>
           </Col>
-          <Col className="updated_time" md={3}>{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</Col>
           <Col className="queued_message" md={2}>{this.props.Conversation.queued_message}</Col>
           <Col className="sent_message" md={2}>{this.props.Conversation.sent_message}</Col>
         </Row>
@@ -392,13 +395,24 @@ class ConversationListBox extends Component{
   }
 
   onKeyPress = (event) => {
-    if(event.key == '1' || event.key == '2' || event.key == '3' || event.key == '4') { 
+    var list = ['1','2','3','4','5','6','7','8','9'];
+    if(list.findIndex(event.key)) { 
       rstore.dispatch({
         type:'ADD_BULK_MESSAGE_QUEUE',
         i:parseInt(event.key,10)-1
       });
       rerender();
     } 
+  }
+
+  handleFirst = (event) => {
+    this.setState({paging_current:0});
+  }
+
+  handleLast = (event) => {
+    var total_items = this.props.Conversations.data.length;
+    var total_pages = Math.ceil(total_items/100);
+      this.setState({paging_current:total_pages-1});
   }
 
   handlePrevious = (event) => {
@@ -420,6 +434,29 @@ class ConversationListBox extends Component{
   }
 
   render(){
+    var paging_per_page = 10;
+    var paging_current = this.state.paging_current;
+    var total_items = this.props.Conversations.data.length;
+    var x10_offset = Math.floor(paging_current/paging_per_page) * paging_per_page;
+    var list = Array.apply(null, {length: paging_per_page}).map(Number.call, Number).map((x,i)=>(x = x + x10_offset));
+    var total_pages = Math.ceil(total_items/100);
+
+    if(this.props.Conversations && this.props.Conversations.data.length >= 1){
+      var PagingBtns = list.map((i,i2)=>{
+        if(i<total_pages){
+          return <button 
+                  key={'paging_'+(i)} 
+                  className={"btn btn-sm"+(this.state.paging_current === i ? " btn-primary" : " btn-default")} 
+                  onClick={this.handlePagingChange} 
+                  data-paging={i} >
+                  {i+1}
+                </button>;
+        }else{
+          return null;
+        }
+      });
+    }
+
     return(
       <section className="ConversationListBox">
         <Row className="header">
@@ -435,7 +472,7 @@ class ConversationListBox extends Component{
           {(this.props.Conversations && this.props.Conversations.data.length >= 1)
             ? this.props.Conversations.data.map((Conversation,index)=>{
                 if(Math.floor(index/100) === this.state.paging_current){
-                  return <ConversationCard key={Conversation.id} Conversation={Conversation} i={index}/>
+                  return <ConversationCard key={Conversation.id} Conversation={Conversation} ConversationC={this.props.ConversationC} i={index}/>
                 }else{
                   return null;
                 }
@@ -447,15 +484,15 @@ class ConversationListBox extends Component{
         {(this.props.Conversations && this.props.Conversations.data.length >= 1)
           ?  <div className="btn-toolbar" role="toolbar">
               <div className="btn-group" role="group">
+                <button className="btn btn-sm btn-default" onClick={this.handleFirst}>{"<<"}</button>
                 <button className="btn btn-sm btn-default" onClick={this.handlePrevious}>Prev</button>
               </div>
               <div className="btn-group" role="group">
-                {Array(Math.ceil(this.props.Conversations.data.length/100)).fill().map((x,i)=>{
-                  return <button key={'paging_'+(i+1)} className={"btn btn-sm"+(this.state.paging_current === i ? " btn-primary" : " btn-default")} onClick={this.handlePagingChange} data-paging={i} >{i+1}</button>;
-                })}
+                {PagingBtns}
               </div>
               <div className="btn-group" role="group">
                 <button className="btn btn-sm btn-default" onClick={this.handleNext}>Next</button>
+                <button className="btn btn-sm btn-default" onClick={this.handleLast}>{">>"}</button>
               </div>
             </div>
           : null
@@ -619,11 +656,10 @@ class MessengerApp extends Component{
             {
               this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
               ? <section className="BulkMessageTool">
-                  <BulkMessageQueue i={0}/>
-                  <BulkMessageQueue i={1}/>
-                  <BulkMessageQueue i={2}/>
-                  <BulkMessageQueue i={3}/>
-                  <div>After highlight press shortcut key 1,2,3 or 4 to queue messages</div>
+                  {Array(7).fill().map((x,i)=>(
+                    <BulkMessageQueue i={i} />
+                  ))}
+                  <div>After highlight press shortcut key 1,2,3 or 4 ... to queue messages</div>
                   <BulkMessageSender />
                 </section>
               : null
@@ -637,6 +673,7 @@ class MessengerApp extends Component{
               ? <ConversationListBox 
                   Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
                   Conversations={this.props.state.Conversations} 
+                  ConversationC={this.props.state.ConversationC}
                 />
               : null
             }

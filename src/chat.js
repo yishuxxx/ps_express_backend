@@ -14,7 +14,6 @@ window.fbAsyncInit = function() {
     version    : 'v2.8'
   });
   FB.AppEvents.logPageView();
-  console.log(settings.fb.app_id);
   window.appdata = new AppData(initial_state,createStore);
   window.rstore = appdata.store;
   };
@@ -51,7 +50,9 @@ class AppData{
   reducer(state={},action=null){
       switch(action.type){
         case 'SET_CURRENT_PAGE':
-          state.pid_current = action.pid;
+          var pi = state.Pages.data.findIndex(x => x.id === action.pid);  
+          state.PageC = state.Pages.data[pi];
+          state.pid_current = state.PageC.id;
           break;
         case 'FB_LOGIN_RESPONSE_SUCCESS':
           state.authResponse = action.response.authResponse;
@@ -60,6 +61,13 @@ class AppData{
           state.Pages = action.response;
           state.Pages.is = [];
           action.response.data.map((item,i)=>{state.Pages.is[item.id] = i;});
+          break;
+        case 'GET/<PAGE_ID>/conversations':
+          var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
+          var obj = appdata.GET_CONVERSATIONS(state.Pages.data[pi]);
+          FB.api(obj.url,function(response){
+            obj.callback(response);
+          });
           break;
         case 'GET/<PAGE_ID>/conversations/RESPONSE_SUCCESS':
         case 'GETMORE/<PAGE_ID>/conversations/RESPONSE_SUCCESS':
@@ -73,6 +81,21 @@ class AppData{
           state.Pages.data[pi].Conversations.paging = action.response.paging;
           state.Conversations = state.Pages.data[pi].Conversations;
           state.bulk_message_queue = [];
+          break;
+        case 'GET/<CONVERSATION_ID>/messages':
+          var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
+          var Page = state.Pages.data[pi];
+          var conv_i = Page.Conversations.data.findIndex(x => x.id === action.t_mid);
+          var Conversation_P = Page.Conversations.data[conv_i];
+          var Conversation = state.Conversations.data[conv_i];
+          var url = '/'+action.t_mid+'/messages?access_token='+Page.access_token+'&fields=message,id,created_time,from&limit=100';
+          FB.api(url,function(response){
+            Conversation.messages = response;
+            Conversation_P.messages = response;
+            state.t_mid_current = Conversation.id;
+            state.ConversationC = Conversation;
+            rerender();
+          });
           break;
         case 'CHANGE_BULK_MESSAGE':
           state.bulk_messages[action.i] = action.bulk_message;
@@ -97,8 +120,6 @@ class AppData{
           break;
         case 'ADD_BULK_MESSAGE_QUEUE':
           var message = state.bulk_messages[action.i];
-          console.log(action.i);
-          console.log(message);
           state.Conversations.data.map((Conversation,i)=>{
             if(Conversation.highlight){
               state.bulk_message_queue.push({t_mid:Conversation.id,message:message});
@@ -119,7 +140,6 @@ class AppData{
               '/'+t_mid+'/messages?access_token='+page_access_token+'&message='+message+'&fields=created_time,from,message',
               'POST',
               function(response){
-                console.log(response);
                 if(response.id){
                   if(bulk_message_queue.length){
                     FBSendMessage(bulk_message_queue);
@@ -223,29 +243,30 @@ class AppData{
 }
 
 
-class PageButton extends Component{
+class PageSelection extends Component{
 
-  handleGetConversations = (event) => {
+  handlePageChange = (event) => {
     rstore.dispatch({
       type:'SET_CURRENT_PAGE',
-      pid:this.props.Page.id
+      pid:event.target[event.target.selectedIndex].value
     });
-
-    var obj = appdata.GET_CONVERSATIONS(this.props.Page);
-    FB.api(obj.url,function(response){
-      obj.callback(response);
+    rstore.dispatch({
+      type:'GET/<PAGE_ID>/conversations'
     });
   }
 
   render(){
     return(
-        <section className="PageButton">
+        <section className="PageSelection">
           <Row>
+            <Col md={4}>{"Select Page : "}</Col>
             <Col md={8}>
-              {this.props.Page.name}
-            </Col>
-            <Col md={4}>
-              <button className="btn btn-primary" onClick={this.handleGetConversations}>{'GET MSG'}</button>
+              <select className="form-control" onChange={this.handlePageChange}>
+                  <option value={""}>{""}</option>
+                {this.props.Pages.data.map((Page,i)=>(
+                  <option key={Page.id} value={Page.id}>{Page.name}</option>
+                ))}
+              </select>
             </Col>
           </Row>
         </section>
@@ -264,7 +285,7 @@ class ConversationCard extends Component{
   }
 
   handleHighlight = (event) => {
-
+    event.stopPropagation();
     if(event.shiftKey){
       rstore.dispatch({
         type:'CONVERSATION_HIGHLIGHT_SHIFT_CLICK',
@@ -281,34 +302,50 @@ class ConversationCard extends Component{
   }
 
   handleShowMoreMessages = (event) => {
+    event.stopPropagation();
     this.setState({show_more_messages:true});
   }
 
+  handleGetMessages = (event) => {
+    rstore.dispatch({
+      type:'GET/<CONVERSATION_ID>/messages',
+      t_mid:this.props.Conversation.id
+    });
+  }
+
   render(){
+    var messages = this.props.Conversation.messages.data.slice(0,4);
+
     return(
       <section 
         className={ "ConversationCard"
                     +(this.props.Conversation.unread_count ? ' unread' : '')
-                    +(this.props.Conversation.highlight ? ' alert-info' : '')
                     +(this.props.Conversation.queued_message ? ' alert-warning' : '')
                     +(this.props.Conversation.sent_message ? ' alert-success' : '')
+                    +(this.props.ConversationC && this.props.Conversation.id === this.props.ConversationC.id ? ' active' : '')                    
                   }
+        onClick={this.handleGetMessages}
       >
         <Row>
           <Col md={1}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
-          <Col md={4}>
-            <div className="sender_name">{this.props.Conversation.senders.data[0].name}</div>
+          <Col md={7}>
+            <div>
+              <span className="sender_name">
+                {this.props.Conversation.senders.data[0].name}
+              </span>
+              <span className="updated_time">{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</span>
+            </div>
+
             <span className="message" onClick={this.handleShowMoreMessages}>
               {
                 this.state.show_more_messages 
-                ? (this.props.Conversation.messages.data.map((message,i)=>(
+                ? (messages.map((message,i)=>(
                     <div key={message.id}>{message.message}</div>
                   )))
                 : <div className="snippet">{this.props.Conversation.snippet ? this.props.Conversation.snippet : '[ IMAGE | STICKER ? ]'}</div>
               }
             </span>
           </Col>
-          <Col className="updated_time" md={3}>{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</Col>
           <Col className="queued_message" md={2}>{this.props.Conversation.queued_message}</Col>
           <Col className="sent_message" md={2}>{this.props.Conversation.sent_message}</Col>
         </Row>
@@ -318,7 +355,7 @@ class ConversationCard extends Component{
   }
 }
 
-class ConversationList extends Component{
+class ConversationListBox extends Component{
   constructor(props,context) {
     super(props,context);
     this.state = {load_more:5,paging_current:0,loading:false};
@@ -358,14 +395,24 @@ class ConversationList extends Component{
   }
 
   onKeyPress = (event) => {
-    console.log(event.key);
-    if(event.key == '1' || event.key == '2' || event.key == '3' || event.key == '4') { 
+    var list = ['1','2','3','4','5','6','7','8','9'];
+    if(list.findIndex(event.key)) { 
       rstore.dispatch({
         type:'ADD_BULK_MESSAGE_QUEUE',
         i:parseInt(event.key,10)-1
       });
       rerender();
     } 
+  }
+
+  handleFirst = (event) => {
+    this.setState({paging_current:0});
+  }
+
+  handleLast = (event) => {
+    var total_items = this.props.Conversations.data.length;
+    var total_pages = Math.ceil(total_items/100);
+      this.setState({paging_current:total_pages-1});
   }
 
   handlePrevious = (event) => {
@@ -387,8 +434,31 @@ class ConversationList extends Component{
   }
 
   render(){
+    var paging_per_page = 10;
+    var paging_current = this.state.paging_current;
+    var total_items = this.props.Conversations.data.length;
+    var x10_offset = Math.floor(paging_current/paging_per_page) * paging_per_page;
+    var list = Array.apply(null, {length: paging_per_page}).map(Number.call, Number).map((x,i)=>(x = x + x10_offset));
+    var total_pages = Math.ceil(total_items/100);
+
+    if(this.props.Conversations && this.props.Conversations.data.length >= 1){
+      var PagingBtns = list.map((i,i2)=>{
+        if(i<total_pages){
+          return <button 
+                  key={'paging_'+(i)} 
+                  className={"btn btn-sm"+(this.state.paging_current === i ? " btn-primary" : " btn-default")} 
+                  onClick={this.handlePagingChange} 
+                  data-paging={i} >
+                  {i+1}
+                </button>;
+        }else{
+          return null;
+        }
+      });
+    }
+
     return(
-      <section className="ConversationList">
+      <section className="ConversationListBox">
         <Row className="header">
           <Col md={1}>No.</Col>
           <Col md={4}>Name/Msg</Col>
@@ -397,43 +467,47 @@ class ConversationList extends Component{
           <Col md={2}>Sent Msg</Col>
         </Row>
 
-        <div tabIndex="1" onKeyPress={this.onKeyPress}>
+        <div className="ConversationList" tabIndex="1" onKeyPress={this.onKeyPress}>
 
           {(this.props.Conversations && this.props.Conversations.data.length >= 1)
             ? this.props.Conversations.data.map((Conversation,index)=>{
-                console.log(index);
                 if(Math.floor(index/100) === this.state.paging_current){
-                  return <ConversationCard key={Conversation.id} Conversation={Conversation} i={index}/>
+                  return <ConversationCard key={Conversation.id} Conversation={Conversation} ConversationC={this.props.ConversationC} i={index}/>
                 }else{
                   return null;
                 }
               })
             : null
           }
-
-          {(this.props.Conversations && this.props.Conversations.data.length >= 1)
-            ?  <div className="btn-toolbar" role="toolbar">
-                <div className="btn-group" role="group">
-                  <button className="btn btn-default" onClick={this.handlePrevious}>Prev</button>
-                </div>
-                <div className="btn-group" role="group">
-                  {Array(Math.ceil(this.props.Conversations.data.length/100)).fill().map((x,i)=>{
-                    return <button key={'paging_'+(i+1)} className={"btn"+(this.state.paging_current === i ? " btn-primary" : " btn-default")} onClick={this.handlePagingChange} data-paging={i} >{i+1}</button>;
-                  })}
-                </div>
-                <div className="btn-group" role="group">
-                  <button className="btn btn-default" onClick={this.handleNext}>Next</button>
-                </div>
-              </div>
-            : null
-          }
-
-          <div>
-            <input className="load_more_repeat form-control" onChange={this.handleLoadMoreChange} value={this.state.load_more} />
-            <button className="btn btn-primary" disabled={this.state.loading} onClick={this.handleGetMoreConversations}>LOAD MORE</button>
-          </div>
-
         </div>
+
+        {(this.props.Conversations && this.props.Conversations.data.length >= 1)
+          ?  <div className="btn-toolbar" role="toolbar">
+              <div className="btn-group" role="group">
+                <button className="btn btn-sm btn-default" onClick={this.handleFirst}>{"<<"}</button>
+                <button className="btn btn-sm btn-default" onClick={this.handlePrevious}>Prev</button>
+              </div>
+              <div className="btn-group" role="group">
+                {PagingBtns}
+              </div>
+              <div className="btn-group" role="group">
+                <button className="btn btn-sm btn-default" onClick={this.handleNext}>Next</button>
+                <button className="btn btn-sm btn-default" onClick={this.handleLast}>{">>"}</button>
+              </div>
+            </div>
+          : null
+        }
+
+        <Row>
+          <Col md={1}>
+            <input className="load_more_repeat form-control" onChange={this.handleLoadMoreChange} value={this.state.load_more} />
+          </Col>
+
+          <Col md={2}>
+            <button className="btn btn-primary" disabled={this.state.loading} onClick={this.handleGetMoreConversations}>LOAD MORE</button>
+          </Col>
+        </Row>
+
       </section>
     );
   }
@@ -453,14 +527,72 @@ class ConversationFilter extends Component{
   }
 }
 */
-class ConversationListContainer extends Component{
+
+
+class MessageManager extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {message_create:''};
+  }
+
+  handleConversationMessageChange = (event) => {
+    this.setState({message_create:event.target.value});
+  }
+
+  handleConversationMessageSubmit = (event) => {
+    /*
+    this.setState({message_create:''});
+    rstore.dispatch({
+      type:'MESSAGE_SEND',
+      page_index:event.target.attributes.getNamedItem('data-page-index').value,
+      post_index:event.target.attributes.getNamedItem('data-post-index').value,
+      comment_index:event.target.attributes.getNamedItem('data-comment-index').value,
+      message:this.state.message_create
+    });
+    rerender();
+    */
+  }
+
   render(){
+    console.log(this.props.Messages);
     return(
-      <section className="ConversationListContainer">   
-        <ConversationList  Page={this.props.Page} Conversations={this.props.Conversations}/>
+      <section className="MessageManager">
+        <section className="messages_list">
+          {this.props.Messages.map((x,index)=>{
+            var Message = this.props.Messages[this.props.Messages.length - 1 - index];
+            var message_from = (Message.from.id === this.props.page_id) ? " self" : " other";
+            return (
+              <div key={Message.id} className={"message_wrapper"+message_from} >
+                <span className={"message"+message_from}>
+                  {Message.message.split('\n').map((item, key) => (
+                    <span key={key}>{item}<br/></span>
+                  ))}
+                </span>
+              </div>
+            );
+          })}
+        </section>
+        <Row>
+          <Col md={9}>
+            <textarea
+              className="form-control"
+              name="message_create" 
+              value={this.state.message_create}
+              onChange={this.handleConversationMessageChange}
+              style={{height:'35px'}}
+            />
+          </Col>
+          <Col md={3}>
+            <span 
+              className="btn btn-sm btn-primary btn-block"
+              onClick={this.handleConversationMessageSubmit}
+            >SEND</span>
+          </Col>
+        </Row>
       </section>
     );
   }
+
 }
 
 class BulkMessageQueue extends Component{
@@ -516,41 +648,24 @@ class BulkMessageSender extends Component{
 
 class MessengerApp extends Component{
   render(){
+
     return(
       <section className="MessengerApp">
         <Row>
           <Col md={3}>
-            <section className="PageButtonList">
-            {(this.props.data.Pages && this.props.data.Pages.data.length >= 1)
-              ? this.props.data.Pages.data.map((Page,index)=>(
-                  <PageButton key={Page.id} Page={Page}/>
-                ))
+            <PageSelection Pages={this.props.state.Pages} />
+            {
+              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
+              ? <ConversationListBox 
+                  Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
+                  Conversations={this.props.state.Conversations} 
+                  ConversationC={this.props.state.ConversationC}
+                />
               : null
             }
-            </section>
           </Col>
 
-          <Col md={6}>
-            <ConversationListContainer 
-              Page={this.props.data.Pages.data[this.props.data.Pages.data.findIndex(x => x.id === rstore.getState().pid_current)]} 
-              Conversations={this.props.data.Conversations} 
-            />
-          </Col>
-
-          <Col md={3}>
-            <section className="BulkMessageTool">
-              <BulkMessageQueue i={0}/>
-              <BulkMessageQueue i={1}/>
-              <BulkMessageQueue i={2}/>
-              <BulkMessageQueue i={3}/>
-              <div>After highlight press shortcut key 1,2,3 or 4 to queue messages</div>
-              <BulkMessageSender />
-            </section>
-          </Col>
         </Row>
-
-
-
 
       </section>
     );
@@ -558,6 +673,6 @@ class MessengerApp extends Component{
 }
 
 var rerender = function(){
-  render(<MessengerApp data={window.rstore.getState()} />, document.getElementById('app'));
+  render(<MessengerApp state={window.rstore.getState()} />, document.getElementById('app'));
 }
 window.rerender  = rerender;

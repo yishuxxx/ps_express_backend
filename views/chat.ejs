@@ -6,22 +6,58 @@
     <!--link rel="stylesheet" href="/css/chat.css"-->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/latest/css/bootstrap.min.css"/>
     <style>
-      .ConversationListContainer{border:1px solid #f7f7f7;padding:5px;}
-      .ConversationList{height:1000px;overflow-y: scroll;}
-      .ConversationCard{border:1px solid #f7f7f7;padding:3px;}
-      .ConversationCard .sender_name{font-size:14px;}
-      .ConversationCard .updated_time{text-align:right;font-size:14px;}
-      .ConversationCard .message{white-space:nowrap;font-size:12px;color:#777;}
-      .ConversationCard .queued_message{white-space:nowrap;font-size:12px;}
-      .ConversationCard .sent_message{white-space:nowrap;font-size:12px;}
+      body{
+        height:100vh;
+        width:calc(100vw - 50px);
+        margin:auto;
+      }
+
+      .ConversationListBox{padding:5px;}
+      .ConversationListBox div.header{font-weight:bold;}
+
+      .ConversationList{
+        height:calc(100vh - 34px - 20px - 30px - 34px - 10px);
+        border:1px solid #ccc;
+        overflow-y: auto;
+        overflow-x:hidden;
+      }
+      .ConversationCard{border-bottom:1px solid #f7f7f7;padding:3px;}
+      .ConversationCard:hover{cursor:pointer;background-color:#eee;}      
+      .ConversationCard.active{background-color:#eee;}
+      .ConversationCard.active:hover{cursor:default;}      
       .ConversationCard.unread{font-weight:bold;}
+
+      .ConversationCard .sender_name{}
+      .ConversationCard .updated_time{float:right;}
+      .ConversationCard .message{font-size:12px;color:#777;}
+      .ConversationCard .queued_message{font-size:12px;}
+      .ConversationCard .sent_message{font-size:12px;}
       .ConversationCard .snippet{cursor:pointer;}
 
       .PageButtonList{padding:5px;}
       .BulkMessageTool{padding:5px;}
       .load_more_repeat{width:60px;}
 
-      .ConversationList div.header{font-weight:bold;}
+      .MessageManager .messages_list{
+        border:1px solid #ccc;
+        padding:5px;
+        border-radius:3px;
+        height:700px;
+        overflow-x:hidden;
+        overflow-y:auto;
+      }
+      .MessageManager .message_wrapper.self{text-align:right;}
+      .MessageManager .message_wrapper.other{text-align:left;}
+      .MessageManager .message{
+        display:inline-block;
+        max-width:90%;
+        margin:3px 0px 3px 0px;
+        padding:5px 10px 5px 10px;
+        border-radius:5px;
+        text-align:left;
+      }
+      .MessageManager .message.self{background-color:#d9edf7;color:#777;}
+      .MessageManager .message.other{background-color:#f7f7f7;}
     </style>
   </head>
   <body>
@@ -29,6 +65,6 @@
 
     <!--script src="https://code.jquery.com/jquery-1.10.2.min.js"></script-->
     <script src="<%= base_dir %>/socket.io/socket.io.js"></script>
-    <script src="<%= base_dir %>/javascripts/bundle_chat.js"></script>
+    <script src="<%= base_dir %>/javascripts/bundle_bulk.js"></script>
   </body>
 </html>
