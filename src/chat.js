@@ -6,6 +6,8 @@ import { createStore } from 'redux';
 import { Grid, Row, Col } from 'react-bootstrap';
 import moment from 'moment';
 //import { syDateFormat } from './Utils/Helper';
+//import {Map} from 'immutable';
+import Immutable from 'seamless-immutable';
 
 window.fbAsyncInit = function() {
   FB.init({
@@ -26,41 +28,48 @@ window.fbAsyncInit = function() {
   fjs.parentNode.insertBefore(js, fjs);
 }(document, 'script', 'facebook-jssdk'));
 
-var initial_state = {
-  scopes:'read_page_mailboxes,manage_pages,publish_pages,pages_show_list',//pages_messaging,pages_messaging_subscriptions
+const initial_state = Immutable({
+  scopes:'read_page_mailboxes,manage_pages,publish_pages,pages_show_list',
   bulk_messages:[''],
   bulk_message_queue:[]
-};
+});
 
 class AppData{
   constructor(initial_state,createStore) {
     this.store = createStore(this.reducer,initial_state);
     var that = this;
-    FB.login(function(response){
 
-      that.FB_LOGIN().callback(response);
+    var FBLogin = function(){
+      FB.login(function(response){
 
-      FB.api(that.GET_PAGES().url,function(response){
-        that.GET_PAGES().callback(response);
-        rerender();
-      });
-    },{scope:this.store.getState().scopes});
+        that.FB_LOGIN().callback(response);
+
+        FB.api(that.GET_PAGES().url,function(response){
+          that.GET_PAGES().callback(response);
+          rerender();
+        });
+      },{scope:that.store.getState().scopes});
+      window.setTimeout(FBLogin,1800*1000);      
+    }
+    FBLogin();
   }
 
-  reducer(state={},action=null){
+  reducer(state=Immutable([]),action=null){
       switch(action.type){
-        case 'SET_CURRENT_PAGE':
-          var pi = state.Pages.data.findIndex(x => x.id === action.pid);  
-          state.PageC = state.Pages.data[pi];
-          state.pid_current = state.PageC.id;
-          break;
         case 'FB_LOGIN_RESPONSE_SUCCESS':
-          state.authResponse = action.response.authResponse;
+          state = Immutable.merge(state, {authResponse: action.response.authResponse});
+          //state.authResponse = action.response.authResponse;
           break;
         case 'GET/me/accounts/RESPONSE_SUCCESS':
-          state.Pages = action.response;
-          state.Pages.is = [];
-          action.response.data.map((item,i)=>{state.Pages.is[item.id] = i;});
+          state = Immutable.merge(state, {Pages: action.response});
+          //state.Pages = action.response;
+          break;
+        case 'SET_CURRENT_PAGE':
+          var pi = state.Pages.data.findIndex(x => x.id === action.pid);
+          state = Immutable.merge(state, {PageC: state.Pages.data[pi]});
+          state = Immutable.merge(state, {pid_current: state.PageC.id});
+          //state.PageC = state.Pages.data[pi];
+          //state.pid_current = state.PageC.id;
           break;
         case 'GET/<PAGE_ID>/conversations':
           var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
@@ -74,31 +83,54 @@ class AppData{
           var pi = state.Pages.data.findIndex(x => x.id === action.PAGE_ID);
 
           if(action.type === 'GETMORE/<PAGE_ID>/conversations/RESPONSE_SUCCESS'){
-            state.Pages.data[pi].Conversations.data = state.Pages.data[pi].Conversations.data.concat(action.response.data);
+            state = Immutable.setIn(state, ["Pages", "data", pi, "Conversations",'data'], state.Pages.data[pi].Conversations.data.concat(action.response.data));
+            state = Immutable.setIn(state, ["Pages", "data", pi, "Conversations",'paging'], action.response.paging);
+            //state.Pages.data[pi].Conversations.data = state.Pages.data[pi].Conversations.data.concat(action.response.data);
+            //state.Pages.data[pi].Conversations.paging = action.response.paging;
           }else{
-            state.Pages.data[pi].Conversations = action.response;
+            //state = Immutable.merge(state, {Pages: {data[pi]: {Conversations:action.response}} });
+            state = Immutable.setIn(state, ["Pages", "data", pi, "Conversations"], action.response);
+            //state.Pages.data[pi].Conversations = action.response;
           }
-          state.Pages.data[pi].Conversations.paging = action.response.paging;
-          state.Conversations = state.Pages.data[pi].Conversations;
-          state.bulk_message_queue = [];
+          state = Immutable.merge(state, {Conversations: state.Pages.data[pi].Conversations, bulk_message_queue:[]});
+          //state.Conversations = state.Pages.data[pi].Conversations;
+          //state.bulk_message_queue = [];
           break;
         case 'GET/<CONVERSATION_ID>/messages':
           var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
-          var Page = state.Pages.data[pi];
+          const Page = state.Pages.data[pi];
           var conv_i = Page.Conversations.data.findIndex(x => x.id === action.t_mid);
-          var Conversation_P = Page.Conversations.data[conv_i];
-          var Conversation = state.Conversations.data[conv_i];
+          //var Conversation_P = Page.Conversations.data[conv_i];
+          const Conversation = state.Conversations.data[conv_i];
           var url = '/'+action.t_mid+'/messages?access_token='+Page.access_token+'&fields=message,id,created_time,from&limit=100';
           FB.api(url,function(response){
-            Conversation.messages = response;
-            Conversation_P.messages = response;
-            state.t_mid_current = Conversation.id;
-            state.ConversationC = Conversation;
+            if(response.data){
+              rstore.dispatch({
+                type:'GET/<CONVERSATION_ID>/messages/RESPONSE_SUCCESS',
+                pi:pi,
+                conv_i:conv_i,
+                response:response
+              })
+            }
             rerender();
           });
           break;
+        case 'GET/<CONVERSATION_ID>/messages/RESPONSE_SUCCESS':
+          var pi = action.pi;
+          var conv_i = action.conv_i;
+          state = Immutable.setIn(state, ["Pages", "data", pi, "Conversations", "data", conv_i,"messages"], action.response);
+          state = Immutable.setIn(state, ["Conversations","data", conv_i,"messages"], state.Pages.data[pi].Conversations.data[conv_i].messages);
+          state = Immutable.setIn(state, ["ConversationC"], state.Conversations.data[conv_i]);
+          state = Immutable.setIn(state, ["t_mid_current"], state.Conversations.data[conv_i].id);                                      
+          //state = Immutable.merge(state, {t_mid_current: state.Conversations.data[conv_i].id, ConversationC:state.Conversations.data[conv_i]});
+          //Conversation.messages = response;
+          //Conversation_P.messages = response;
+          //state.t_mid_current = Conversation.id;
+          //state.ConversationC = Conversation;
+          break;
         case 'CHANGE_BULK_MESSAGE':
-          state.bulk_messages[action.i] = action.bulk_message;
+          state = Immutable.setIn(state,['bulk_messages',action.i],action.bulk_message);
+          //state.bulk_messages[action.i] = action.bulk_message;
           break;
         case 'CONVERSATION_HIGHLIGHT_CLICK':
         case 'CONVERSATION_HIGHLIGHT_SHIFT_CLICK':
@@ -111,26 +143,35 @@ class AppData{
             var list = Array.apply(null, {length: (max_i - min_i +1)}).map(Number.call, Number);
             list.map((item,i)=>{
               list[i] = list[i] + min_i;
-              state.Conversations.data[list[i]].highlight = last_highlight_state;
+              state = Immutable.setIn(state,['Conversations','data',list[i],'highlight'],last_highlight_state)              
+              //state.Conversations.data[list[i]].highlight = last_highlight_state;
             });
           }else if(action.type === 'CONVERSATION_HIGHLIGHT_CLICK'){
-            state.Conversations.data[ti].highlight = !state.Conversations.data[ti].highlight;
-            state.last_highlight_i = ti;
+            state = Immutable.setIn(state,['Conversations','data',ti,'highlight'],!state.Conversations.data[ti].highlight)
+            state = Immutable.set(state,'last_highlight_i',ti);
+            //state.Conversations.data[ti].highlight = !state.Conversations.data[ti].highlight;
+            //state.last_highlight_i = ti;
           }
           break;
         case 'ADD_BULK_MESSAGE_QUEUE':
           var message = state.bulk_messages[action.i];
           state.Conversations.data.map((Conversation,i)=>{
             if(Conversation.highlight){
-              state.bulk_message_queue.push({t_mid:Conversation.id,message:message});
-              Conversation.highlight = false;
-              Conversation.queued_message = message;
+              state = Immutable.setIn(state,['bulk_message_queue',state.bulk_message_queue.length],{t_mid:Conversation.id,message:message});
+              state = Immutable.setIn(state,['Conversations','data',i,'highlight'],false);
+              state = Immutable.setIn(state,['Conversations','data',i,'queued_message'],message);
+              //state.bulk_message_queue.push({t_mid:Conversation.id,message:message});
+              //Conversation.highlight = false;
+              //Conversation.queued_message = message;
             }
           });
           break;
         case 'SEND_BULK_MESSAGE':
           var FBSendMessage = function(bulk_message_queue){
-            var citem = bulk_message_queue.shift();
+            var citem = bulk_message_queue.slice(0,1);
+            var bulk_message_queue = bulk_message_queue.slice(1,bulk_message_queue.length);
+            state = Immutable.setIn(state,['bulk_message_queue'],bulk_message_queue);
+
             var t_mid = citem.t_mid;
             var message = citem.message;
             var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
@@ -145,12 +186,15 @@ class AppData{
                     FBSendMessage(bulk_message_queue);
                   }else{
                     state.Conversations.data.map((Conversation,i)=>{
-                      Conversation.queued_message = '';
+                      state = Immutable.setIn(state,['Conversations','data',i,'queued_message'],'');
+                      //Conversation.queued_message = '';
                     });
                     rerender();
                   }
-                  state.Conversations.data[ti].sent_message = message;
-                  state.Conversations.data[ti].sent_m_mid = response.id;
+                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_message'],message);
+                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_m_mid'],response.id);
+                  //state.Conversations.data[ti].sent_message = message;
+                  //state.Conversations.data[ti].sent_m_mid = response.id;
                   rerender();
                 }else{
                   alert('Failed to send message...');
@@ -163,7 +207,7 @@ class AppData{
         default:
           break;
       }
-
+      window.state = state;
       return state;
   }
 
@@ -227,19 +271,6 @@ class AppData{
       }
     });
   }
-
-  initStore(){
-    var that = this;
-    FB.login(function(response){
-
-      that.FB_LOGIN().callback(response);
-
-      FB.api(that.GET_PAGES().url,function(response){
-        that.GET_PAGES().callback(response);
-        
-      });
-    });
-  }
 }
 
 
@@ -279,11 +310,16 @@ class ConversationCard extends Component{
     super(props,context);
     this.state = {highlight:false,show_more_messages:false}; 
   }
-
+/*
   componentWillReceiveProps(nextProps) {
     this.setState({highlight:nextProps.Conversation.highlight});
   }
 
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return this.props !== nextProps || this.state !== nextState;
+  }
+*/
   handleHighlight = (event) => {
     event.stopPropagation();
     if(event.shiftKey){
@@ -307,6 +343,7 @@ class ConversationCard extends Component{
   }
 
   handleGetMessages = (event) => {
+    event.stopPropagation();
     rstore.dispatch({
       type:'GET/<CONVERSATION_ID>/messages',
       t_mid:this.props.Conversation.id
@@ -315,14 +352,13 @@ class ConversationCard extends Component{
 
   render(){
     var messages = this.props.Conversation.messages.data.slice(0,4);
-
     return(
       <section 
         className={ "ConversationCard"
                     +(this.props.Conversation.unread_count ? ' unread' : '')
                     +(this.props.Conversation.queued_message ? ' alert-warning' : '')
                     +(this.props.Conversation.sent_message ? ' alert-success' : '')
-                    +(this.props.ConversationC && this.props.Conversation.id === this.props.ConversationC.id ? ' active' : '')                    
+                    +(this.props.ConversationC && this.props.Conversation.id === this.props.ConversationC.id ? ' active' : '')
                   }
         onClick={this.handleGetMessages}
       >
@@ -395,8 +431,10 @@ class ConversationListBox extends Component{
   }
 
   onKeyPress = (event) => {
+
+
     var list = ['1','2','3','4','5','6','7','8','9'];
-    if(list.findIndex(event.key)) { 
+    if(list.findIndex((x,i)=>(x===event.key))!== -1){
       rstore.dispatch({
         type:'ADD_BULK_MESSAGE_QUEUE',
         i:parseInt(event.key,10)-1
@@ -554,7 +592,6 @@ class MessageManager extends Component{
   }
 
   render(){
-    console.log(this.props.Messages);
     return(
       <section className="MessageManager">
         <section className="messages_list">
@@ -653,6 +690,20 @@ class MessengerApp extends Component{
       <section className="MessengerApp">
         <Row>
           <Col md={3}>
+            {
+              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
+              ? <section className="BulkMessageTool">
+                  {Array(7).fill().map((x,i)=>(
+                    <BulkMessageQueue key={'bmq_'+i} i={i} />
+                  ))}
+                  <div>After highlight press shortcut key 1,2,3 or 4 ... to queue messages</div>
+                  <BulkMessageSender />
+                </section>
+              : null
+            }
+          </Col>
+
+          <Col md={6}>
             <PageSelection Pages={this.props.state.Pages} />
             {
               this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
@@ -661,6 +712,13 @@ class MessengerApp extends Component{
                   Conversations={this.props.state.Conversations} 
                   ConversationC={this.props.state.ConversationC}
                 />
+              : null
+            }
+          </Col>
+          <Col md={3}>
+            {
+              this.props.state.ConversationC && this.props.state.PageC
+              ? <MessageManager Messages={this.props.state.ConversationC.messages.data} page_id={this.props.state.PageC.id} />
               : null
             }
           </Col>

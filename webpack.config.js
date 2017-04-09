@@ -55,7 +55,7 @@ module.exports = {
                 loader: 'url?limit=10000&mimetype=image/svg+xml'
               }
         ],
-    }/*,
+    },
     plugins:[
       new webpack.DefinePlugin({
         'process.env': {
@@ -63,5 +63,5 @@ module.exports = {
         }
       }),
       new webpack.optimize.UglifyJsPlugin()
-    ]*/
+    ]
 };

@@ -36,15 +36,20 @@ class AppData{
   constructor(initial_state,createStore) {
     this.store = createStore(this.reducer,initial_state);
     var that = this;
-    FB.login(function(response){
 
-      that.FB_LOGIN().callback(response);
+    var FBLogin = function(){
+      FB.login(function(response){
 
-      FB.api(that.GET_PAGES().url,function(response){
-        that.GET_PAGES().callback(response);
-        rerender();
-      });
-    },{scope:this.store.getState().scopes});
+        that.FB_LOGIN().callback(response);
+
+        FB.api(that.GET_PAGES().url,function(response){
+          that.GET_PAGES().callback(response);
+          rerender();
+        });
+      },{scope:that.store.getState().scopes});
+      window.setTimeout(FBLogin,1800*1000);      
+    }
+    FBLogin();
   }
 
   reducer(state={},action=null){
@@ -227,19 +232,6 @@ class AppData{
       }
     });
   }
-
-  initStore(){
-    var that = this;
-    FB.login(function(response){
-
-      that.FB_LOGIN().callback(response);
-
-      FB.api(that.GET_PAGES().url,function(response){
-        that.GET_PAGES().callback(response);
-        
-      });
-    });
-  }
 }
 
 
@@ -395,8 +387,10 @@ class ConversationListBox extends Component{
   }
 
   onKeyPress = (event) => {
+
+
     var list = ['1','2','3','4','5','6','7','8','9'];
-    if(list.findIndex(event.key)) { 
+    if(list.findIndex((x,i)=>(x===event.key))!== -1){
       rstore.dispatch({
         type:'ADD_BULK_MESSAGE_QUEUE',
         i:parseInt(event.key,10)-1
@@ -554,7 +548,6 @@ class MessageManager extends Component{
   }
 
   render(){
-    console.log(this.props.Messages);
     return(
       <section className="MessageManager">
         <section className="messages_list">
@@ -657,7 +650,7 @@ class MessengerApp extends Component{
               this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
               ? <section className="BulkMessageTool">
                   {Array(7).fill().map((x,i)=>(
-                    <BulkMessageQueue i={i} />
+                    <BulkMessageQueue key={'bmq_'+i} i={i} />
                   ))}
                   <div>After highlight press shortcut key 1,2,3 or 4 ... to queue messages</div>
                   <BulkMessageSender />
