@@ -56,12 +56,6 @@ class AppData{
 
   reducer(state=Immutable([]),action=null){
       switch(action.type){
-        case 'BACK':
-          console.log(window.statestack);
-          state = window.statestack.splice(window.statestack.length-1,1)[0];
-          console.log(window.statestack);
-          console.log(state);
-          break;
         case 'FB_LOGIN_RESPONSE_SUCCESS':
           state = Immutable.merge(state, {authResponse: action.response.authResponse});
           //state.authResponse = action.response.authResponse;
@@ -174,13 +168,12 @@ class AppData{
           break;
         case 'SEND_BULK_MESSAGE':
           var FBSendMessage = function(bulk_message_queue){
-            var citem = bulk_message_queue.slice(0,1)[0];
+            var citem = bulk_message_queue.slice(0,1);
             var bulk_message_queue = bulk_message_queue.slice(1,bulk_message_queue.length);
             state = Immutable.setIn(state,['bulk_message_queue'],bulk_message_queue);
 
             var t_mid = citem.t_mid;
             var message = citem.message;
-            console.log(citem);
             var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
             var ti = state.Conversations.data.findIndex(x => x.id === t_mid);;
             var page_access_token = state.Pages.data[pi].access_token;
@@ -189,18 +182,20 @@ class AppData{
               'POST',
               function(response){
                 if(response.id){
-                  rstore.dispatch({
-                    type:'SEND_MESSAGE_RESPONSE_SUCCESS',
-                    message:message,
-                    m_mid:response.id,
-                    ti:ti
-                  });
-                  rerender();
-
                   if(bulk_message_queue.length){
                     FBSendMessage(bulk_message_queue);
+                  }else{
+                    state.Conversations.data.map((Conversation,i)=>{
+                      state = Immutable.setIn(state,['Conversations','data',i,'queued_message'],'');
+                      //Conversation.queued_message = '';
+                    });
+                    rerender();
                   }
-
+                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_message'],message);
+                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_m_mid'],response.id);
+                  //state.Conversations.data[ti].sent_message = message;
+                  //state.Conversations.data[ti].sent_m_mid = response.id;
+                  rerender();
                 }else{
                   alert('Failed to send message...');
                 }
@@ -209,25 +204,9 @@ class AppData{
           FBSendMessage(state.bulk_message_queue);
 
           break;
-        case 'SEND_MESSAGE_RESPONSE_SUCCESS':
-          state = Immutable.setIn(state,['Conversations','data',action.ti,'sent_message'],action.message);
-          state = Immutable.setIn(state,['Conversations','data',action.ti,'sent_m_mid'],action.m_mid);
-          state = Immutable.setIn(state,['Conversations','data',action.ti,'queued_message'],'');
-          //state.Conversations.data[ti].sent_message = message;
-          //state.Conversations.data[ti].sent_m_mid = response.id;
-          break;
         default:
           break;
       }
-      
-
-      if(action.type !== 'BACK'){
-        if(!window.statestack){
-          window.statestack = [];
-        }
-        window.statestack.push(state);
-      }
-
       window.state = state;
       return state;
   }
