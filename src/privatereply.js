@@ -830,7 +830,7 @@ class AutoRefreshSetup extends Component{
 
   render(){
     return(
-      <section style={{position:'fixed',top:'0px',backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px",overflowY:'auto'}}>
+      <section style={{position:'fixed',top:'0px',backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px",overflowY:'auto',zIndex:'1'}}>
         {
           sy.is_login_fb 
           ? <button onClick={this.handleFBLogout} className="btn btn-primary">{'Logout Facebook'}</button>
