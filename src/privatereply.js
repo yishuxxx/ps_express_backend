@@ -678,7 +678,8 @@ class CommentHistory extends Component{
 
   handleGetCommentCount = (event) => {
     var post_id = this.state.post_id;
-    fetch('http://www.sy.com.my/fbhook/countcomments?post_id='+post_id,{
+    var page_id = post_id.split('_')[0];
+    fetch(settings.base_dir+'/msg/countcomments?post_id='+post_id+'&page_id='+page_id,{
       method: "GET",
       headers: {"Content-Type": "application/x-www-form-urlencoded"}
     }).then(function (res) {
