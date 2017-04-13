@@ -568,24 +568,48 @@ sy.parseAutoRefreshList = function(str){
   var state = rstore.getState();
   var page_posts = str.split("\n");
   var list = [];
+  var index_list = [];
   var row;
 
   try{
     if(state.Pages && state.Pages.data.length){
       page_posts.map((page_post,index)=>{
-        row = page_post.split('-');
+        row = page_post.split('_');
         list[index] = [];
-        list[index][0] = row[0]-1;
-        list[index][1] = row[1]-1;
-        state.Pages.data[list[index][0]].Posts.data[list[index][1]];
+        list[index][0] = row[0];
+        list[index][1] = row[1];
+        list[index][2] = row[2];
+
+        var page_index = sy.getPageIndex(row[0]);
+        var post_index = sy.getPostIndex(row[0],row[0]+'_'+row[1]);
+
+        index_list[index] = [];
+        index_list[index][0] = page_index;
+        index_list[index][1] = post_index;
+        index_list[index][2] = row[2];
+
+        state.Pages.data[page_index].Posts.data[post_index];
       })
-      return list;
+      return index_list;
     }
   }catch(err){
     alert('something is wrong with the list');
     throw err;
   }
 
+}
+
+sy.getPageIndex = function(page_id){
+  var Pages = rstore.getState().Pages.data;
+  return Pages.findIndex((x)=>(x.id === page_id));
+}
+
+sy.getPostIndex = function(page_id,post_id){
+  var Pages = rstore.getState().Pages.data;
+  var page_index = Pages.findIndex((x)=>(x.id === page_id));
+  var Posts = Pages[page_index].Posts.data;
+  var post_index = Posts.findIndex((x)=>(x.id === post_id));
+  return post_index;
 }
 
 sy.queueAutoRefresh = function(){
@@ -961,14 +985,7 @@ class PostManager extends Component{
         comment_reply_bulk:""
     };
   }
-/*
-  componentWillReceiveProps(nextProps){
-    this.setState({
-      private_reply_bulk:nextProps.private_reply_bulk,
-      comment_reply_bulk:nextProps.comment_reply_bulk
-    });
-  }
-*/
+
   handleClick = (event) => {
     var post_index = event.target.attributes.getNamedItem('data-index').value;
     var page_index = event.target.attributes.getNamedItem('data-page-index').value;
@@ -1030,6 +1047,8 @@ class PostManager extends Component{
           <a href={facebook_base_url+this.props.Post.id.split('_')[0]+'/posts/'+this.props.Post.id.split('_')[1]} target="_blank">POST</a>
           <span name="created_time">{' '+moment.utc(this.props.Post.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')}</span>
         </div>
+
+        <div>{this.props.Post.id}</div>
 
         <div>
           {this.props.Post.message ? <div name="message">{this.props.Post.message.substring(0,20)}</div> : null}
