@@ -11,6 +11,8 @@ module.exports = {
         login:'./src/login',
         chat:'./src/chat',
         bulk:'./src/bulk',
+        bulk_immutable:'./src/bulk_immutable',
+        getlongtoken:'./src/getlongtoken'
     },
     output: {
         filename: './public/javascripts/bundle_[name].js'

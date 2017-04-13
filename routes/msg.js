@@ -31,7 +31,7 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 
 	// URL where the app is running (include protocol). Used to point to scripts and 
 	// assets located at this address. 
-	const SERVER_URL = "https://www.sy.com.my/fbhook/";
+	const SERVER_URL = "https://www.sy.com.my/api/msg/";
 
 	if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
 	  console.error("Missing config values");
@@ -58,20 +58,42 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	var FBMessageTmp = FBMessageTmpFunc(Sequelize,sequelize);
 	var {FBCommentFunc} = require('../src/models/FBComment');
 	var FBComment = FBCommentFunc(Sequelize,sequelize);
+	var {FBConversationFunc} = require('../src/models/FBConversation');
+	var FBConversation = FBConversationFunc(Sequelize,sequelize);
+	var {FBPageFunc} = require('../src/models/FBPage');
+	var FBPage = FBPageFunc(Sequelize,sequelize);
 
 	var numUsers = 0;
 	io.on('connection', function (socket) {
+	  console.log('connected to socket client');
 	  var addedUser = false;
 
 	  // when the client emits 'new message', this listens and executes
 	  socket.on('new message', function (data) {
 	    // we tell the client to execute 'new message'
-
-
-	    socket.broadcast.emit('new message', {
-	      username: socket.username,
-	      message: data
+	    console.log('new message');
+	    console.log(data);
+	    
+	    var auid;
+	    FBConversation.findOne({
+	    	where:{t_mid:data.t_mid}
+	    }).then(function(Instance){
+	    	var FBConversation = Instance;
+	    	if(FBConversation){
+	    		auid = FBConversation.auid ? FBConversation.auid : null;
+	    		if(auid){
+	    			return auid;
+	    		}
+	    	}
+	    }).then(function(auid){
+		    socket.broadcast.emit('new message', {
+		      username: socket.username,
+		      message: data.text
+		    });
+			sendTextMessage(auid, data.text);
 	    });
+		
+
 	  });
 
 	  // when the client emits 'add user', this listens and executes
@@ -210,6 +232,10 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 		res.render('bulk');
 	})
 
+	router.get('/bulk2',function(req,res){
+		res.render('bulk_immutable');
+	})
+
 	/*
 	 * Use your own validation token. Check that the token used in the Webhook 
 	 * setup is the same token used here.
@@ -305,19 +331,75 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	});
 
 	router.get('/getlongtoken',function(req, res){
-	  request({
-	    uri: 'https://graph.facebook.com/v2.8/oauth/access_token',
-	    qs: { 
-	      grant_type:'fb_exchange_token',
-	      client_id:APP_ID,
-	      client_secret:APP_SECRET,
-	      fb_exchange_token:req.query.access_token
-	    },
-	    method: 'GET',
-	    json: {}
-	  }, function (error, response, body) {
-	    error ? console.log(error) : console.log(body);
-	  });
+	  res.render('getlongtoken');
+	});
+
+	router.post('/getlongtoken',function(req, res){
+		var q = req.body;
+		var Pages = q.data;
+		var FBPages = [];
+		var promises = [];
+
+		Pages.map(function(Page,i){
+			promises.push(
+				FBPage.findOrCreate({
+					where:{ pid:Page.id },
+					defaults:{
+						pid:Page.id,
+						name:Page.name,
+						access_token:Page.access_token
+					}
+				})
+			);
+		});
+
+		Sequelize.Promise.all(promises)
+		.then(function(Instances){
+			FBPages = Instances;
+			for(var i=0;i<FBPages.length;i++){
+				FBPages[i] = FBPages[i][0];
+				console.log('FOUND/CREATED PAGE ID = '+FBPages[i].pid);
+			}
+
+			var promises = [];
+			FBPages.map((FBPage,i)=>{
+				promises.push(
+					rq({
+						uri: 'https://graph.facebook.com/v2.8/oauth/access_token',
+						qs: { 
+							grant_type:'fb_exchange_token',
+							client_id:APP_ID,
+							client_secret:APP_SECRET,
+							fb_exchange_token:FBPage.access_token
+						},
+						method: 'GET',
+						json: {}
+					})
+				);
+			})
+
+			return Sequelize.Promise.all(promises);
+
+		}).then(function(Bodys){
+			res.send({Bodys});
+
+			FBPages.map((FBPage,i)=>{
+				FBPage.access_token_long = Bodys[i].access_token;
+				FBPage.expires_in = Bodys[i].expires_in;
+				FBPage.save()
+				.then(function(Instance){
+					if(Instance){
+						console.log('SAVED LONG LIVE TOKEN #'+i+' --- '+Instance.access_token_long);
+					}
+				})
+			});
+
+			
+		}).catch(function(err){
+			console.log(err);
+		})
+
+
 	});
 
 	router.get('/conversations',function(req, res){
@@ -480,18 +562,36 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	}
 
 	router.get('/refreshcomments',function(req,res){
-	  fbRefreshComments(req.query.post_id,res,null,null);
+		var PAGE_ACCESS_TOKEN = 
+		FBPage.findOne({
+			where:{
+				pid:query.pid,
+				access_token_long:{$ne:null}
+			}
+		}).then(function(Instance){
+			var FBPage = Instance;
+			if(FBPage){
+				var PAGE_ACCESS_TOKEN = FBPage.access_token_long;
+				if(PAGE_ACCESS_TOKEN){
+					fbRefreshComments(req.query.post_id,res,null,null,PAGE_ACCESS_TOKEN);
+				}else{
+					res.send({success:false,message:'This PAGE does not have valid PAGE_ACCESS_TOKEN yet'});
+				}
+			}else{
+				res.send({success:false,message:'The PAGE of the POST you requested does not exist in the database'});
+			}
+		});
 	});
 
-	function fbRefreshComments(post_id,res,Post={},nextPageURL=null){
+	function fbRefreshComments(post_id,res,Post={},nextPageURL=null,PAGE_ACCESS_TOKEN){
 	  var uri = 'https://graph.facebook.com/v2.8/'+post_id+'/comments';
 	  var qs = { 
-	    access_token:PAGE_ACCESS_TOKEN_LONG_DAIGOU,
+	    access_token:PAGE_ACCESS_TOKEN,
 	    fields:'id,created_time,from,message,can_reply_privately,can_comment,can_hide,can_remove,comment_count',
 	    limit:100,
 	    order:'reverse_chronological'
 	  };
-
+console.log(PAGE_ACCESS_TOKEN);
 	  request({
 	    uri: (nextPageURL ? nextPageURL : uri),
 	    qs: (nextPageURL ? null : qs),
@@ -630,31 +730,54 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 
 	router.get('/countcomments',function(req,res){
 
-	  var post_id = req.query.post_id;
-	  var uri = 'https://graph.facebook.com/v2.8/'+req.query.post_id+'/comments';
-	  var qs = { 
-	    access_token:PAGE_ACCESS_TOKEN_LONG_DAIGOU,
-	    fields:'id,created_time,from,message,can_reply_privately,can_comment,can_hide,can_remove,comment_count',
-	    limit:100,
-	    order:'reverse_chronological'
-	  };
+		var post_id,uri,qs;
 
-	  new Sequelize.Promise(function(resolve, reject) {
-	      function next(queryParams,r) {
-	          getNextItem(queryParams,r).then(function(r) {
-	              console.log(r.data.length);
-	              console.log(r.is_found);
-	              console.log(r.paging);
-	              if (r.is_found || r.paging.next == undefined) { 
-	                  resolve(r);
-	              } else {
-	                  next(queryParams,r);
-	              }
-	          }, reject);
-	      }
-	      // start first iteration of the loop
-	      next({uri:uri,qs:qs},{});
-	  }).then(function(r) {
+		FBPage.findOne({
+			where:{ 
+				pid:req.query.page_id
+			}
+		}).then(function(Instance){
+			var FBPage = Instance;
+			if(FBPage){
+				var PAGE_ACCESS_TOKEN = FBPage.access_token_long;
+				if(PAGE_ACCESS_TOKEN){
+					//continue normally
+					return PAGE_ACCESS_TOKEN;
+				}else{
+					throw {success:false,message:'This PAGE does not have valid PAGE_ACCESS_TOKEN yet'};
+				}
+			}else{
+				throw {success:false,message:'The PAGE of the POST you requested does not exist in the database'};
+			}
+
+		}).then(function(PAGE_ACCESS_TOKEN){
+
+		  post_id = req.query.post_id;
+		  uri = 'https://graph.facebook.com/v2.8/'+req.query.post_id+'/comments';
+		  qs = { 
+		    access_token:PAGE_ACCESS_TOKEN,
+		    fields:'id,created_time,from,message,can_reply_privately,can_comment,can_hide,can_remove,comment_count',
+		    limit:100,
+		    order:'reverse_chronological'
+		  };
+
+		  return new Sequelize.Promise(function(resolve, reject) {
+		      function next(queryParams,r) {
+		          getNextItem(queryParams,r).then(function(r) {
+		              console.log(r.data.length);
+		              console.log(r.is_found);
+		              console.log(r.paging);
+		              if (r.is_found || r.paging.next == undefined) { 
+		                  resolve(r);
+		              } else {
+		                  next(queryParams,r);
+		              }
+		          }, reject);
+		      }
+		      // start first iteration of the loop
+		      next({uri:uri,qs:qs},{});
+	  	});
+		}).then(function(r) {
 	      // process results here
 	      var promises = [];
 	      r.data.map((Comment2,index)=>{

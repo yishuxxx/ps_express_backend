@@ -57,10 +57,7 @@ class AppData{
   reducer(state=Immutable([]),action=null){
       switch(action.type){
         case 'BACK':
-          console.log(window.statestack);
           state = window.statestack.splice(window.statestack.length-1,1)[0];
-          console.log(window.statestack);
-          console.log(state);
           break;
         case 'FB_LOGIN_RESPONSE_SUCCESS':
           state = Immutable.merge(state, {authResponse: action.response.authResponse});
@@ -384,8 +381,8 @@ class ConversationCard extends Component{
         onClick={this.handleGetMessages}
       >
         <Row>
-          <Col md={1}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
-          <Col md={7}>
+          <Col md={2}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
+          <Col md={10}>
             <div>
               <span className="sender_name">
                 {this.props.Conversation.senders.data[0].name}
@@ -403,8 +400,6 @@ class ConversationCard extends Component{
               }
             </span>
           </Col>
-          <Col className="queued_message" md={2}>{this.props.Conversation.queued_message}</Col>
-          <Col className="sent_message" md={2}>{this.props.Conversation.sent_message}</Col>
         </Row>
         
       </section>
@@ -518,14 +513,6 @@ class ConversationListBox extends Component{
 
     return(
       <section className="ConversationListBox">
-        <Row className="header">
-          <Col md={1}>No.</Col>
-          <Col md={4}>Name/Msg</Col>
-          <Col md={3}>Time</Col>
-          <Col md={2}>Queued Msg</Col>
-          <Col md={2}>Sent Msg</Col>
-        </Row>
-
         <div className="ConversationList" tabIndex="1" onKeyPress={this.onKeyPress}>
 
           {(this.props.Conversations && this.props.Conversations.data.length >= 1)
@@ -709,43 +696,40 @@ class MessengerApp extends Component{
 
     return(
       <section className="MessengerApp">
-        <Row>
-          <Col md={3}>
-            {
-              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
-              ? <section className="BulkMessageTool">
-                  {Array(7).fill().map((x,i)=>(
-                    <BulkMessageQueue key={'bmq_'+i} i={i} />
-                  ))}
-                  <div>After highlight press shortcut key 1,2,3 or 4 ... to queue messages</div>
-                  <BulkMessageSender />
-                </section>
-              : null
-            }
-          </Col>
-
-          <Col md={6}>
-            <PageSelection Pages={this.props.state.Pages} />
-            {
-              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
-              ? <ConversationListBox 
-                  Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
-                  Conversations={this.props.state.Conversations} 
-                  ConversationC={this.props.state.ConversationC}
-                />
-              : null
-            }
-          </Col>
-          <Col md={3}>
-            {
-              this.props.state.ConversationC && this.props.state.PageC
-              ? <MessageManager Messages={this.props.state.ConversationC.messages.data} page_id={this.props.state.PageC.id} />
-              : null
-            }
-          </Col>
-
-        </Row>
-
+      <Row>
+        <Col md={3}>
+          <PageSelection Pages={this.props.state.Pages} />
+          {
+            this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
+            ? <ConversationListBox 
+                Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
+                Conversations={this.props.state.Conversations} 
+                ConversationC={this.props.state.ConversationC}
+              />
+            : null
+          }
+        </Col>
+        <Col md={3}>
+          {
+            this.props.state.ConversationC && this.props.state.PageC
+            ? <MessageManager Messages={this.props.state.ConversationC.messages.data} page_id={this.props.state.PageC.id} />
+            : null
+          }
+        </Col>
+        <Col md={3}>
+          {
+            this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
+            ? <ConversationListBox 
+                Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
+                Conversations={this.props.state.Conversations} 
+                ConversationC={this.props.state.ConversationC}
+              />
+            : null
+          }
+        </Col>
+        <Col md={3}>
+        </Col>
+      </Row>
       </section>
     );
   }

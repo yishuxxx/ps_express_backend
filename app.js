@@ -60,6 +60,7 @@ app.set('view engine', 'ejs');
 app.locals.base_dir = settings.base_dir;
 
 // uncomment after placing your favicon in /public
+app.use(favicon(__dirname + '/public/images/sy_logo_16px.ico'));
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
