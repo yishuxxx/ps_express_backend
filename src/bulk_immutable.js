@@ -3,7 +3,7 @@ import _ from 'lodash';
 import React, {Component} from 'react';
 import {render} from 'react-dom';
 import { createStore } from 'redux';
-import { Grid, Row, Col } from 'react-bootstrap';
+import { Grid, Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import moment from 'moment';
 //import { syDateFormat } from './Utils/Helper';
 //import {Map} from 'immutable';
@@ -39,7 +39,7 @@ class AppData{
     this.store = createStore(this.reducer,initial_state);
     var that = this;
 
-    var FBLogin = function(){
+    var FBLoginFirstTime = function(){
       FB.login(function(response){
 
         that.FB_LOGIN().callback(response);
@@ -51,16 +51,36 @@ class AppData{
       },{scope:that.store.getState().scopes});
       window.setTimeout(FBLogin,1800*1000);      
     }
-    FBLogin();
+
+    var FBLogin = function(){
+      FB.login(function(response){
+
+        that.FB_LOGIN().callback(response);
+
+      },{scope:that.store.getState().scopes});
+      window.setTimeout(FBLogin,1800*1000);      
+    }
+
+    FBLoginFirstTime();
   }
 
   reducer(state=Immutable([]),action=null){
       switch(action.type){
+        case 'BACK':
+          state = window.statestack.splice(window.statestack.length-1,1)[0];
+          break;
         case 'FB_LOGIN_RESPONSE_SUCCESS':
           state = Immutable.merge(state, {authResponse: action.response.authResponse});
           //state.authResponse = action.response.authResponse;
           break;
         case 'GET/me/accounts/RESPONSE_SUCCESS':
+          if(state.Pages && (state.Pages.data.length === action.response.data.length)){
+            action.response.data.map((Page,i)=>{
+              action.response.data[i].Conversations = state.Pages[i].data.Conversations
+            });
+          }else if(state.Pages && (state.Pages.data.length !== action.response.data.length)){
+            state = Immutable.merge(state, {Conversations: null});
+          }
           state = Immutable.merge(state, {Pages: action.response});
           //state.Pages = action.response;
           break;
@@ -155,9 +175,14 @@ class AppData{
           break;
         case 'ADD_BULK_MESSAGE_QUEUE':
           var message = state.bulk_messages[action.i];
+          var bulk_message_queue_mutable = Immutable.asMutable(state.bulk_message_queue);
+
           state.Conversations.data.map((Conversation,i)=>{
             if(Conversation.highlight){
-              state = Immutable.setIn(state,['bulk_message_queue',state.bulk_message_queue.length],{t_mid:Conversation.id,message:message});
+
+              bulk_message_queue_mutable = bulk_message_queue_mutable.filter(x=>x.t_mid!==Conversation.id);
+              bulk_message_queue_mutable.push({t_mid:Conversation.id,message:message});
+
               state = Immutable.setIn(state,['Conversations','data',i,'highlight'],false);
               state = Immutable.setIn(state,['Conversations','data',i,'queued_message'],message);
               //state.bulk_message_queue.push({t_mid:Conversation.id,message:message});
@@ -165,50 +190,85 @@ class AppData{
               //Conversation.queued_message = message;
             }
           });
+          state = Immutable.setIn(state,['bulk_message_queue'],bulk_message_queue_mutable);
           break;
-        case 'SEND_BULK_MESSAGE':
-          var FBSendMessage = function(bulk_message_queue){
-            var citem = bulk_message_queue.slice(0,1);
-            var bulk_message_queue = bulk_message_queue.slice(1,bulk_message_queue.length);
-            state = Immutable.setIn(state,['bulk_message_queue'],bulk_message_queue);
-
-            var t_mid = citem.t_mid;
-            var message = citem.message;
-            var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
-            var ti = state.Conversations.data.findIndex(x => x.id === t_mid);;
-            var page_access_token = state.Pages.data[pi].access_token;
-            FB.api(
-              '/'+t_mid+'/messages?access_token='+page_access_token+'&message='+message+'&fields=created_time,from,message',
-              'POST',
-              function(response){
-                if(response.id){
-                  if(bulk_message_queue.length){
-                    FBSendMessage(bulk_message_queue);
-                  }else{
-                    state.Conversations.data.map((Conversation,i)=>{
-                      state = Immutable.setIn(state,['Conversations','data',i,'queued_message'],'');
-                      //Conversation.queued_message = '';
-                    });
-                    rerender();
-                  }
-                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_message'],message);
-                  state = Immutable.setIn(state,['Conversations','data',ti,'sent_m_mid'],response.id);
-                  //state.Conversations.data[ti].sent_message = message;
-                  //state.Conversations.data[ti].sent_m_mid = response.id;
-                  rerender();
-                }else{
-                  alert('Failed to send message...');
-                }
-            });
-          }
-          FBSendMessage(state.bulk_message_queue);
-
+        case 'REPLACE_BULK_MESSAGE_QUEUE':
+          state = Immutable.setIn(state,['bulk_message_queue'],action.bulk_message_queue);
+          break;
+        case 'SEND_MESSAGE_RESPONSE_SUCCESS':
+          state = Immutable.setIn(state,['Conversations','data',action.ti,'sent_message'],action.message);
+          state = Immutable.setIn(state,['Conversations','data',action.ti,'sent_m_mid'],action.m_mid);
+          state = Immutable.setIn(state,['Conversations','data',action.ti,'queued_message'],'');
+          //state.Conversations.data[ti].sent_message = message;
+          //state.Conversations.data[ti].sent_m_mid = response.id;
           break;
         default:
           break;
       }
+      
+
+      if(action.type !== 'BACK'){
+        if(!window.statestack){
+          window.statestack = [];
+        }
+        window.statestack.push(state);
+      }
+
       window.state = state;
       return state;
+  }
+
+  SEND_BULK_MESSAGE(action={}){
+    var state = rstore.getState();
+
+    var FBSendMessage = function(bulk_message_queue){
+      var citem = bulk_message_queue.slice(0,1)[0];
+      var bulk_message_queue = bulk_message_queue.slice(1,bulk_message_queue.length)
+      rstore.dispatch({
+        type:'REPLACE_BULK_MESSAGE_QUEUE',
+        bulk_message_queue:bulk_message_queue
+      });
+
+      var t_mid = citem.t_mid;
+      var message = citem.message;
+      var pi = state.Pages.data.findIndex(x => x.id === state.pid_current);
+      var ti = state.Conversations.data.findIndex(x => x.id === t_mid);;
+      var page_access_token = state.Pages.data[pi].access_token;
+      FB.api(
+        '/'+t_mid+'/messages?access_token='+page_access_token+'&message='+message+'&fields=created_time,from,message',
+        'POST',
+        function(response){
+          if(response.id){
+            rstore.dispatch({
+              type:'SEND_MESSAGE_RESPONSE_SUCCESS',
+              message:message,
+              m_mid:response.id,
+              ti:ti
+            });
+            rerender();
+
+            if(bulk_message_queue.length){
+              FBSendMessage(bulk_message_queue);
+            }
+
+          }else{
+            alert('Failed to send message...');
+          }
+      });
+    }
+    FBSendMessage(state.bulk_message_queue);
+  }
+
+  SEND_MESSAGE_TO_SERVER(){
+    fetch(settings.base_url+'',{
+      method: 'POST',
+      headers:{'Content-Type': 'application/json'},
+      body: JSON.stringify(messageData)
+    }).then(function (res) {
+      res.json();
+    }).then(function(response){
+      console.log(response);
+    });
   }
 
   FB_LOGIN(){
@@ -366,8 +426,17 @@ class ConversationCard extends Component{
           <Col md={1}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
           <Col md={7}>
             <div>
-              <span className="sender_name">
-                {this.props.Conversation.senders.data[0].name}
+              <span className="conversation_header">
+                <span className="sender_name">{this.props.Conversation.senders.data[0].name}</span>
+
+                <span className="label_box">
+                {/*this.props.Conversation.tags.data.length
+                  ? this.props.Conversation.tags.data.map((label,i)=>(
+                    <span key={this.props.Conversation.id+'L'+i} className="label label-default">{label.name}</span>
+                  ))
+                  : null
+                */}
+                </span>
               </span>
               <span className="updated_time">{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</span>
             </div>
@@ -573,13 +642,20 @@ class MessageManager extends Component{
     this.state = {message_create:''};
   }
 
+  componentDidUpdate() {
+    this.scrollToBottom();
+  }
+
   handleConversationMessageChange = (event) => {
     this.setState({message_create:event.target.value});
   }
 
   handleConversationMessageSubmit = (event) => {
-    /*
+    
+    sendMessage({t_mid:this.props.t_mid,text:this.state.message_create});
     this.setState({message_create:''});
+    
+    /*
     rstore.dispatch({
       type:'MESSAGE_SEND',
       page_index:event.target.attributes.getNamedItem('data-page-index').value,
@@ -591,20 +667,32 @@ class MessageManager extends Component{
     */
   }
 
+  scrollToBottom() {
+    const scrollHeight = this.messageList.scrollHeight;
+    const height = this.messageList.clientHeight;
+    const maxScrollTop = scrollHeight - height;
+    this.messageList.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
+  }
+
   render(){
+
     return(
       <section className="MessageManager">
-        <section className="messages_list">
+        <section className="messages_list" ref={(div) => {this.messageList = div;}}>
           {this.props.Messages.map((x,index)=>{
             var Message = this.props.Messages[this.props.Messages.length - 1 - index];
             var message_from = (Message.from.id === this.props.page_id) ? " self" : " other";
+            var message_left_right = (Message.from.id === this.props.page_id) ? "top" : "left";
+
             return (
               <div key={Message.id} className={"message_wrapper"+message_from} >
+                <OverlayTrigger placement={message_left_right} overlay={<Tooltip id="tooltip">{moment().diff(moment.utc(Message.created_time),'hours') <= 24 ? moment.utc(Message.created_time).utcOffset(8).format('HH:mm') : moment.utc(Message.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')}</Tooltip>}>
                 <span className={"message"+message_from}>
                   {Message.message.split('\n').map((item, key) => (
                     <span key={key}>{item}<br/></span>
                   ))}
                 </span>
+                </OverlayTrigger>
               </div>
             );
           })}
@@ -620,7 +708,72 @@ class MessageManager extends Component{
             />
           </Col>
           <Col md={3}>
-            <span 
+              <span 
+              className="btn btn-sm btn-primary btn-block"
+              onClick={this.handleConversationMessageSubmit}
+            >SEND</span>
+          </Col>
+        </Row>
+      </section>
+    );
+  }
+
+}
+
+
+class ChatManager extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {message_create:''};
+  }
+
+  handleConversationMessageChange = (event) => {
+    this.setState({message_create:event.target.value});
+  }
+
+  handleConversationMessageSubmit = (event) => {
+    console.log(this.state.message_create);
+    sendMessage(this.state.message_create);
+  }
+
+  render(){
+
+    return(
+      <section className="ChatManager">
+        <section className="messages_list">
+          {this.props.Messages
+            ? this.props.Messages.map((x,index)=>{
+                var Message = this.props.Messages[this.props.Messages.length - 1 - index];
+                var message_from = (Message.from.id === this.props.page_id) ? " self" : " other";
+                var message_left_right = (Message.from.id === this.props.page_id) ? "top" : "left";
+
+                return (
+                  <div key={Message.id} className={"message_wrapper"+message_from} >
+                    <OverlayTrigger placement={message_left_right} overlay={<Tooltip id="tooltip">{moment().diff(moment.utc(Message.created_time),'hours') <= 24 ? moment.utc(Message.created_time).utcOffset(8).format('HH:mm') : moment.utc(Message.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')}</Tooltip>}>
+                    <span className={"message"+message_from}>
+                      {Message.message.split('\n').map((item, key) => (
+                        <span key={key}>{item}<br/></span>
+                      ))}
+                    </span>
+                    </OverlayTrigger>
+                  </div>
+                );
+            })
+            : null
+          }
+        </section>
+        <Row>
+          <Col md={9}>
+            <textarea
+              className="form-control"
+              name="message_create" 
+              value={this.state.message_create}
+              onChange={this.handleConversationMessageChange}
+              style={{height:'35px'}}
+            />
+          </Col>
+          <Col md={3}>
+              <span 
               className="btn btn-sm btn-primary btn-block"
               onClick={this.handleConversationMessageSubmit}
             >SEND</span>
@@ -669,15 +822,13 @@ class BulkMessageQueue extends Component{
 
 class BulkMessageSender extends Component{
   handleSendBulkMessage = (event) => {
-    rstore.dispatch({
-      type:'SEND_BULK_MESSAGE'
-    });
+    appdata.SEND_BULK_MESSAGE();
   }
 
   render(){
     return(
-      <section className="BulkMessageSender">
-        <button className="btn btn-primary btn-lg" onClick={this.handleSendBulkMessage}>SEND</button>
+      <section className="BulkMessageSender">            
+        <button className="btn btn-primary btn-lg" onClick={this.handleSendBulkMessage}>SEND <span className="badge">{this.props.bulk_message_queue_counter}</span></button>
       </section>
     );
   }
@@ -697,7 +848,7 @@ class MessengerApp extends Component{
                     <BulkMessageQueue key={'bmq_'+i} i={i} />
                   ))}
                   <div>After highlight press shortcut key 1,2,3 or 4 ... to queue messages</div>
-                  <BulkMessageSender />
+                  <BulkMessageSender bulk_message_queue_counter={this.props.state.bulk_message_queue.length}/>
                 </section>
               : null
             }
@@ -718,11 +869,17 @@ class MessengerApp extends Component{
           <Col md={3}>
             {
               this.props.state.ConversationC && this.props.state.PageC
-              ? <MessageManager Messages={this.props.state.ConversationC.messages.data} page_id={this.props.state.PageC.id} />
+              ? <MessageManager Messages={this.props.state.ConversationC.messages.data} page_id={this.props.state.PageC.id} t_mid={this.props.state.ConversationC.id} />
               : null
             }
           </Col>
 
+        </Row>
+
+        <Row>
+          <Col md={3}>
+            <ChatManager Messages={this.props.state.Messages ? this.props.state.Messages : null}/>
+          </Col>
         </Row>
 
       </section>
@@ -730,7 +887,127 @@ class MessengerApp extends Component{
   }
 }
 
+
 var rerender = function(){
   render(<MessengerApp state={window.rstore.getState()} />, document.getElementById('app'));
 }
 window.rerender  = rerender;
+
+var socket = io();
+var connected = true;
+
+// Whenever the server emits 'login', log the login message
+socket.on('login', function (data) {
+  connected = true;
+  // Display the welcome message
+  var message = "Welcome to Socket.IO Chat – ";
+  //log(message, {
+  //  prepend: true
+  //});
+  //addParticipantsMessage(data);
+  console.log(message);
+});
+
+// Whenever the server emits 'new message', update the chat body
+socket.on('new message', function (data) {
+  console.log('new message');
+  console.log(data);
+  //addChatMessage(data);
+});
+
+// Whenever the server emits 'user joined', log it in the chat body
+socket.on('user joined', function (data) {
+  console.log('user joined');
+  //log(data.username + ' joined');
+  //addParticipantsMessage(data);
+});
+
+// Whenever the server emits 'user left', log it in the chat body
+socket.on('user left', function (data) {
+  console.log('user left');
+  //log(data.username + ' left');
+  //addParticipantsMessage(data);
+  //removeChatTyping(data);
+});
+
+// Whenever the server emits 'typing', show the typing message
+socket.on('typing', function (data) {
+  console.log('typing');
+  //addChatTyping(data);
+});
+
+// Whenever the server emits 'stop typing', kill the typing message
+socket.on('stop typing', function (data) {
+  console.log('stop typing');
+  //removeChatTyping(data);
+});
+
+socket.on('disconnect', function () {
+  console.log('you have been disconnected');
+  //log('you have been disconnected');
+});
+
+socket.on('reconnect', function () {
+  console.log('you have been reconnected');
+  //log('you have been reconnected');
+  //if (username) {
+  //  socket.emit('add user', username);
+  //}
+});
+
+socket.on('reconnect_error', function () {
+  console.log('attempt to reconnect has failed');
+  //log('attempt to reconnect has failed');
+});
+  
+
+function cleanInput(input) {
+  return input;
+}
+
+// Sends a chat message
+function sendMessage(message) {
+  // Prevent markup from being injected into the message
+  console.log('inside sendMessage');
+  message.text = cleanInput(message.text);
+  // if there is a non-empty message and a socket connection
+  if (message.text && connected) {
+    //$inputMessage.val('');
+    /*
+    rstore.dispatch({
+      message_create:''
+    });
+    */
+
+    addChatMessage(message);
+    // tell server to execute 'new message' and send along one parameter
+    socket.emit('new message', message);
+  }
+}
+
+// Adds the visual chat message to the message list
+function addChatMessage(data, options) {
+  // Don't fade the message in if there is an 'X was typing'
+  /*
+  var $typingMessages = getTypingMessages(data);
+  options = options || {};
+  if ($typingMessages.length !== 0) {
+    options.fade = false;
+    $typingMessages.remove();
+  }
+
+  var $usernameDiv = $('<span class="username"/>')
+    .text(data.username)
+    .css('color', getUsernameColor(data.username));
+  var $messageBodyDiv = $('<span class="messageBody">')
+    .text(data.message);
+
+  var typingClass = data.typing ? 'typing' : '';
+  var $messageDiv = $('<li class="message"/>')
+    .data('username', data.username)
+    .addClass(typingClass)
+    .append($usernameDiv, $messageBodyDiv);
+
+  addMessageElement($messageDiv, options);*/
+  console.log('addChatMessage')
+}
