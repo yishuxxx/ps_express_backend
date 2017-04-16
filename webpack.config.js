@@ -9,8 +9,6 @@ module.exports = {
         fastpage:'./src/fastpage.js',
         privatereply:'./src/privatereply',
         login:'./src/login',
-        chat:'./src/chat',
-        bulk:'./src/bulk',
         bulk_immutable:'./src/bulk_immutable',
         getlongtoken:'./src/getlongtoken'
     },

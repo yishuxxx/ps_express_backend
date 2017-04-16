@@ -132,8 +132,10 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
+          }else if(response.data && response.data.length === 0){
+            //DO NOTHING
           }else{
-            alert('Cannot get the COMMENTS of this POST...')
+            console.log(response);
           }
         });
       }else{
@@ -218,6 +220,8 @@ var reducer = function(state={},action=null){
                 private_reply:private_reply
               });
               rerender();
+            }else if(response.error){
+              alert(response.error.message);
             }else{
               alert('Failed to send private reply...');
             }
@@ -234,6 +238,10 @@ var reducer = function(state={},action=null){
 
     case 'COMMENT_REPLY_SUBMIT_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].comment_count += 1;
+      break;
+
+    case 'COMMENT_TOGGLE_RESPONSE_SUCCESS':
+      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].is_hidden = action.is_hidden;
       break;
 
     case 'LABEL_APPLY':
@@ -254,6 +262,8 @@ var reducer = function(state={},action=null){
               rstore.dispatch({
                 type:'LABEL_APPLY_RESPONSE_SUCCESS'
               });
+            }else if(response.error){
+              alert(response.error.message);
             }else{
               alert('Failed to apply LABEL to USER...');
             }
@@ -283,6 +293,8 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
+          }else if(response.error){
+              alert(response.error.message);
           }else{
             alert('Failed to get comment reply...');
           }
@@ -312,6 +324,8 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
+          }else if(response.error){
+              alert(response.error.message);
           }else{
             alert('Failed to get comment reply...');
           }
@@ -341,6 +355,8 @@ var reducer = function(state={},action=null){
               conversation_id:conversation_id
             });
             rerender();
+          }else if(response.error){
+              alert(response.error.message);
           }else{
             alert('Failed to send message...');
           }
@@ -381,7 +397,15 @@ var reducer = function(state={},action=null){
 
     case 'GET_COMMENT_COUNTS_RESPONSE_SUCCESS':
       state.CommentCounts = action.CommentCounts;
-      console.log(state.CommentCounts);
+      break;
+
+    case 'GET_COMMENT_COUNTS_V2_RESPONSE_SUCCESS':
+      var page_index = action.page_index;
+      var post_index = action.post_index;
+      var Post = state.Pages.data[page_index].Posts.data[post_index];
+      var post_id = Post.id;
+      var page_id = Post.id.split('_')[0];
+      Post.CommentCounts = action.CommentCounts;
       break;
 
     default:
@@ -754,7 +778,75 @@ class CommentHistory extends Component{
               {this.props.CommentCounts
               ? (this.props.CommentCounts.map((CommentCount,index)=>(
                   <tr key={'comment_count_'+index}>
-                    <td>{CommentCount.date.split('T')[0]}</td>
+                    <td>{CommentCount.created_date.split('T')[0]}</td>
+                    <td>{CommentCount.count}</td>
+                  </tr>
+                )))
+              : null}
+            </tbody>
+            </table>
+          </Col>   
+        </Row>
+      </section>
+    );
+  }
+}
+
+
+class CommentHistoryV2 extends Component{
+  constructor(props,context) {
+    super(props,context);
+  }
+
+  handleGetCommentCount = (event) => {
+    var page_index = this.props.page_index;
+    var post_index = this.props.post_index;
+    var Posts = rstore.getState().Pages.data[page_index].Posts.data;
+    var post_id = Posts[post_index].id;
+    var page_id = post_id.split('_')[0];
+    
+    fetch(settings.base_dir+'/msg/countcomments?post_id='+post_id+'&page_id='+page_id,{
+      method: "GET",
+      headers: {"Content-Type": "application/x-www-form-urlencoded"}
+    }).then(function (res) {
+      return res.json();
+    }).then(function(response){
+      rstore.dispatch({
+        type:'GET_COMMENT_COUNTS_V2_RESPONSE_SUCCESS',
+        page_index:page_index,
+        post_index:post_index,
+        CommentCounts:response
+      });
+      rerender();
+    });
+  }
+
+  render(){
+
+    if(this.props.CommentCounts){
+      var CommentCountsLast7Days;
+      var display_days = 7;
+      var size = this.props.CommentCounts.length;
+      if(size < display_days){
+        CommentCountsLast7Days = this.props.CommentCounts;
+      }else{
+        CommentCountsLast7Days = this.props.CommentCounts.slice(size-display_days,size);
+      }
+    }
+
+    return(
+      <section id="CommentHistory">
+        <Row>
+          <Col md={2}>
+            <button className="btn btn-primary" onClick={this.handleGetCommentCount}>COUNT</button>
+          </Col>
+          <Col md={4}>
+            <table className="table">
+            <tbody>
+              {CommentCountsLast7Days
+              ? (CommentCountsLast7Days.map((CommentCount,index)=>(
+                  <tr key={this.props.post_index+'_comment_count_'+index}>
+                    <td>{CommentCount.created_date.split('T')[0]}</td>
                     <td>{CommentCount.count}</td>
                   </tr>
                 )))
@@ -1056,15 +1148,14 @@ class PostManager extends Component{
         </div>
 
         <Row>
-          <Col md={4}>
+          <Col md={6}>
             <button className="btn btn-default btn-sm" data-index={this.props.index} data-page-index={this.props.page_index} data-id={this.props.Post.id} onClick={this.handleClick} data-refresh="LOAD_MORE">LOAD MORE</button>
             <button className="btn btn-info btn-sm" data-index={this.props.index} data-page-index={this.props.page_index} data-id={this.props.Post.id} onClick={this.handleClick} data-refresh="REFRESH">REFRESH</button>
-          </Col>
-
-          <Col md={2}>
-            { (this.props.Post.Comments && this.props.Post.Comments.data)
-            ? <span style={boldfont}>{'Comments\n('+this.props.Post.Comments.data.length+' in '+latest_comment_time.diff(oldest_comment_time,'hours')+'hours)'}</span>
-            : null }
+            <CommentHistoryV2 
+              page_index={this.props.page_index}
+              post_index={this.props.index}
+              CommentCounts={this.props.Post.CommentCounts}
+            />
           </Col>
 
           <Col md={2}>
@@ -1206,6 +1297,8 @@ class CommentManager extends Component{
               comment_reply:comment_reply
             });
             rerender();
+          }else if(response.error){
+              alert(response.error.message);
           }else{
             alert('Failed to send private reply...');
           }
@@ -1253,6 +1346,36 @@ class CommentManager extends Component{
     });
   }
 
+  handleToggleMessage = (event) =>{
+    var state = rstore.getState();
+    var page_index = this.props.page_index;
+    var post_index = this.props.post_index;
+    var index = this.props.index;
+    var comment_id = this.props.Comment.id;
+    var page_access_token = state.Pages.data[page_index].access_token;
+    var is_hidden = this.props.Comment.is_hidden;
+
+    FB.api(
+      '/'+comment_id+'?access_token='+page_access_token+'&is_hidden='+!is_hidden,
+      'POST',
+      function(response){
+        if(response.success){
+          rstore.dispatch({
+            type:'COMMENT_TOGGLE_RESPONSE_SUCCESS',
+            page_index:page_index,
+            post_index:post_index,
+            comment_index:index,
+            is_hidden:!is_hidden
+          });
+          rerender();
+        }else if(response.error){
+          alert(response.error.message);
+        }else{
+          console.log(response);
+        }
+    });
+  }
+
   render(){
     return(
       <section id="comment_manager" style={greenborderbottom}>
@@ -1264,6 +1387,13 @@ class CommentManager extends Component{
           </Col>
 
           <Col md={2}>
+            <button 
+              className={"label"+(this.props.Comment.is_hidden ? ' label-default' : ' label-info')} 
+              name="hide_message"
+              onClick={this.handleToggleMessage}
+            >
+              {this.props.Comment.is_hidden ? 'HIDDEN' : 'OK'}
+            </button>
             <span name="message">{this.props.Comment.message+' '}</span>
           </Col>
 

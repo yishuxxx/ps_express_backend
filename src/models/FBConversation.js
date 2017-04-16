@@ -5,7 +5,7 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true,
-        autoIncrement:true
+        autoIncrement: true
       },
       "pid": {
         "type": "BIGINT(20)",
@@ -19,13 +19,19 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "defaultValue": null,
         "primaryKey": false
       },
+      "pid_uid": {
+        "type": "VARCHAR(40)",
+        "allowNull": false,
+        "defaultValue": null,
+        "primaryKey": false
+      },
       "t_mid": {
         "type": "VARCHAR(40)",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "auid": {
+      "psid": {
         "type": "BIGINT(20)",
         "allowNull": true,
         "defaultValue": null,

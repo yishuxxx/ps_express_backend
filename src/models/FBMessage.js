@@ -5,7 +5,31 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
             "allowNull": false,
             "defaultValue": null,
             "primaryKey": true,
-            autoIncrement:true
+            autoIncrement: true
+        },
+        "pid": {
+            "type": "BIGINT(20) UNSIGNED",
+            "allowNull": false,
+            "defaultValue": null,
+            "primaryKey": false
+        },
+        "uid": {
+            "type": "BIGINT(20) UNSIGNED",
+            "allowNull": false,
+            "defaultValue": null,
+            "primaryKey": false
+        },
+        "pid_uid": {
+            "type": "VARCHAR(40)",
+            "allowNull": false,
+            "defaultValue": null,
+            "primaryKey": false
+        },
+        "t_mid": {
+            "type": "VARCHAR(40)",
+            "allowNull": true,
+            "defaultValue": null,
+            "primaryKey": false
         },
         "created_time": {
             "type": "TIMESTAMP",
@@ -37,19 +61,13 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
             "defaultValue": null,
             "primaryKey": false
         },
-        "pid": {
+        "psid_recipient": {
             "type": "BIGINT(20) UNSIGNED",
             "allowNull": false,
             "defaultValue": null,
             "primaryKey": false
         },
-        "auid_recipient": {
-            "type": "BIGINT(20) UNSIGNED",
-            "allowNull": false,
-            "defaultValue": null,
-            "primaryKey": false
-        },
-        "auid_sender": {
+        "psid_sender": {
             "type": "BIGINT(20) UNSIGNED",
             "allowNull": false,
             "defaultValue": null,
@@ -61,24 +79,24 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
             "defaultValue": null,
             "primaryKey": false
         },
-        "delivered_timestamp":{  
-          "type":"BIGINT(20)",
-          "allowNull":true,
-          "defaultValue":null,
-          "primaryKey":false
-       },
-       "delivered":{  
-          "type":"TINYINT(4)",
-          "allowNull":true,
-          "defaultValue":null,
-          "primaryKey":false
-       },
-       "read_timestamp":{  
-          "type":"BIGINT(20)",
-          "allowNull":true,
-          "defaultValue":null,
-          "primaryKey":false
-       }
+        "delivered_timestamp": {
+            "type": "BIGINT(20)",
+            "allowNull": true,
+            "defaultValue": null,
+            "primaryKey": false
+        },
+        "delivered": {
+            "type": "TINYINT(4)",
+            "allowNull": true,
+            "defaultValue": null,
+            "primaryKey": false
+        },
+        "read_timestamp": {
+            "type": "BIGINT(20)",
+            "allowNull": true,
+            "defaultValue": null,
+            "primaryKey": false
+        }
     },{
         tableName:'fb_message',
         timestamps:true,

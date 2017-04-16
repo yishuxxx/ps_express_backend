@@ -39,29 +39,27 @@ class AppData{
     this.store = createStore(this.reducer,initial_state);
     var that = this;
 
-    var FBLoginFirstTime = function(){
-      FB.login(function(response){
-
-        that.FB_LOGIN().callback(response);
-
-        FB.api(that.GET_PAGES().url,function(response){
-          that.GET_PAGES().callback(response);
-          rerender();
-        });
-      },{scope:that.store.getState().scopes});
-      window.setTimeout(FBLogin,1800*1000);      
-    }
-
     var FBLogin = function(){
       FB.login(function(response){
 
-        that.FB_LOGIN().callback(response);
+        that.store.dispatch({
+          type:'FB_LOGIN_RESPONSE_SUCCESS',
+          response:response
+        });
+
+        FB.api('/me/accounts?access_token='+that.store.getState().authResponse.accessToken,function(response){
+          that.store.dispatch({
+            type:'GET/me/accounts/RESPONSE_SUCCESS',
+            response:response
+          });
+          rerender();
+        });
 
       },{scope:that.store.getState().scopes});
-      window.setTimeout(FBLogin,1800*1000);      
+      window.setTimeout(FBLogin,1800*1000);
     }
 
-    FBLoginFirstTime();
+    FBLogin();
   }
 
   reducer(state=Immutable([]),action=null){
@@ -76,7 +74,7 @@ class AppData{
         case 'GET/me/accounts/RESPONSE_SUCCESS':
           if(state.Pages && (state.Pages.data.length === action.response.data.length)){
             action.response.data.map((Page,i)=>{
-              action.response.data[i].Conversations = state.Pages[i].data.Conversations
+              action.response.data[i].Conversations = state.Pages.data[i].Conversations
             });
           }else if(state.Pages && (state.Pages.data.length !== action.response.data.length)){
             state = Immutable.merge(state, {Conversations: null});
@@ -268,37 +266,6 @@ class AppData{
       res.json();
     }).then(function(response){
       console.log(response);
-    });
-  }
-
-  FB_LOGIN(){
-    var that = this;
-    return ({
-      url:'',
-      callback:function(response){
-        that.store.dispatch({
-          type:'FB_LOGIN_RESPONSE_SUCCESS',
-          response:response
-        });
-      }
-    });
-  }
-
-  GET_PAGES(){
-    var that = this;
-    return ({
-      url : '/me/accounts?access_token='+that.store.getState().authResponse.accessToken,
-      callback : function(response){
-        if(response.data && response.data.length>=1){
-          that.store.dispatch({
-            type:'GET/me/accounts/RESPONSE_SUCCESS',
-            response:response
-          });
-        }else{
-          console.log(response);
-        }
-        return response;
-      }
     });
   }
 
