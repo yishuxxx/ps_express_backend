@@ -1,6 +1,6 @@
-module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io) {
-
+module.exports = function Msg(express, request, rq, crypto, settings, Sequelize, sequelize, io) {
 	var router = express.Router();
+	var moment = require('moment');
 	this.router = router;
 
 	// middleware that is specific to this router
@@ -11,14 +11,13 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	});
 	*/
 
-	const APP_ID = "610612705804936";
 	const APP_SECRET = "cf682be6c2942e8af05c7a5ea13ce065";
 	// Arbitrary value used to validate a webhook
 	const VALIDATION_TOKEN = "TheOneAndOnlyToken";
 	// Generate a page access token for your page from the App Dashboard
 	const PAGE_ACCESS_TOKEN = "EAAIrWVlswogBAG38edlWENOvy3sVtYJZC7qIMGdCMPP0FdWZBMIyvVzaZByLxtB44PNZC3CPlWSULQEo7oL481jB0ZBF0oYXmOruQQAgyIzDp6Unrl9aHjaSWnumKTyBh7XvHQQeu0mqd7Bv2FLkKGpBiZCYeCtHHH8STvYISMsgZDZD";
 
-	// URL where the app is running (include protocol). Used to point to scripts and 
+	// URL where the app is running (include protocol). Used to point to scripts and
 	// assets located at this address. 
 	const SERVER_URL = "https://www.sy.com.my/api/msg/";
 
@@ -83,7 +82,7 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 			sendTextMessage(psid, data.text);
 	    });
 		
-
+ 
 	  });
 
 	  // when the client emits 'add user', this listens and executes
@@ -279,7 +278,7 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	  fbLoadAll(req,res,Conversation,null);
 	});
 
-	function fbLoadAll(req,res,Conversation={},nextPageURL=null){
+	function fbLoadAll(req, res, Conversation={}, nextPageURL=null) {
 	  var uri = 'https://graph.facebook.com/v2.8/'+req.query.t_mid+'/messages';
 	  var qs = { 
 	    access_token:PAGE_ACCESS_TOKEN_['1661200044095778'],
@@ -473,89 +472,18 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 
 	});
 
-
-  function nextFBRequest(resolve,reject,queryParams,r,breakCondition) {
-
-		function getNextFBRequest(queryParams,r={data:[]},breakCondition) {
-
-			if(r.data.length === 0){
-				uri = queryParams.uri;
-				qs = queryParams.qs;
-			}else{
-				if(r.paging.next){
-					uri = r.paging.next;
-					qs = null;
-				}else if(r.paging.cursors){
-					uri = queryParams.uri;
-					qs = queryParams.qs;
-					qs.after = r.paging.cursors.after;
-				}else{
-					throw new Error('Paging of Facebook Response is not recognized');
-				}
-				
-			}
-
-		  return rq({
-		    uri: uri,
-		    qs: qs,
-		    method: 'GET'
-		  }).then(function (res) {
-
-		    response = JSON.parse(res);
-
-	      if(response.data && response.data.length>=1){
-
-	        r.data = r.data.concat(response.data);
-	        r.paging = response.paging;
-	        r.continue = true;
-	        r = breakCondition(r,response);
-
-	      }else if(response.data && response.data.length === 0){
-
-	        r.data = r.data;
-	        r.paging = response.paging;
-	        r.continue = false;
-
-	      }else if(response.error){
-
-	      	throw new Error(response.error.message);
-
-	    	}else{
-
-	      	throw new Error("Unexpected Facebook response");
-
-	      }
-	      return r;
-
-		  }).catch(function(err){
-		    throw err;
-		  });
-		}
-
-    getNextFBRequest(queryParams,r,breakCondition)
-    .then(function(r) {
-        if (!r.continue) { 
-            resolve(r);
-        } else {
-    				console.log('r.data.length ============ '+r.data.length);
-    				console.log(r.paging);
-            nextFBRequest(resolve,reject,queryParams,r,breakCondition);
-        }
-    }, reject);
-  }
-
-
 	router.get('/getconv',function(req,res){
 
 		var pid = req.query.pid;
 		var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_[pid];
+		var last_message_date = moment(req.query.last_message_date);
 
 	  new Sequelize.Promise(function(resolve, reject) {
 
 			  var uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
 			  var qs = { 
 			    access_token:PAGE_ACCESS_TOKEN,
-			    fields:'senders',
+			    fields:'link,id,message_count,snippet,updated_time,unread_count,senders',
 			    limit:100
 			  };
 
@@ -564,17 +492,66 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
 	      	
 	      	var list = response.data;
 	      	list.map((item,i)=>{
-	      		item.id === '' ? r.continue = false : null;
+	      		var tmp = last_message_date.diff(moment(item.updated_time),'seconds');
+	      		console.log(tmp + '___' + (tmp >= 0));
+	      		if(last_message_date.diff(moment(item.updated_time),'seconds') >= 0){
+	      			r.continue = false;
+	      		}
 	      	});
 
 	      	return r;
 	      });
   	}).then(function(r){
-  		res.send({success:true,r:r});
-  	})
+  		var promises = [];
+  		r.data.map((Conversation,i)=>{
+
+  			promises.push(
+	  			FBConversation.upsert({
+		  				pid					: Conversation.senders.data[1].id,
+		  				uid 				: Conversation.senders.data[0].id,	
+		  				pid_uid			: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
+		  				t_mid 			: Conversation.id,
+		  				psid 				: null,
+		  				updated_time: Conversation.updated_time,
+		  				link 				: Conversation.link,
+		  				name 				: Conversation.senders.data[0].name,
+		  				snippet 		:	Conversation.snippet,
+		  				message_count	: Conversation.message_count,
+		  				unread_count	: Conversation.unread_count
+	  				},{
+		  				where : {
+		          	t_mid				: Conversation.id
+		        	}
+		        }
+		      )
+	  			/*
+					FBConversation.findOrCreate({
+	  				where : {
+	          	t_mid				: Conversation.id
+	        	}, 
+	        	defaults: {
+		  				pid					: Conversation.senders.data[1].id,
+		  				uid 				: Conversation.senders.data[0].id,	
+		  				pid_uid			: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
+		  				t_mid 			: Conversation.id,
+		  				psid 				: null,
+		  				updated_time: Conversation.updated_time,
+		  				link 				: Conversation.link,
+		  				name 				: Conversation.senders.data[0].name,
+		  				snippet 		:	Conversation.snippet,
+		  				message_count	: Conversation.message_count,
+		  				unread_count	: Conversation.unread_count
+	  				}
+	  			})
+					*/
+  			);
+  		})
+  		return Sequelize.Promise.all(promises);
+  	}).then(function(Instances){
+  		res.send({success:true,length:Instances.length});
+  	});
 
 	});
-
 
 	router.get('/getmessages',function(req,res){
 
@@ -611,81 +588,6 @@ module.exports = function Msg(express,request,rq,crypto,settings,Sequelize,seque
   	})
 
 	});
-
-
-	router.get('/getcomments',function(req,res){
-
-		if(!req.query.pid || !req.query.post_id){
-			res.send({success:false,message:'Missing Query Parameters'});
-			return null;
-		}
-
-		var pid = req.query.pid;
-		var post_id = req.query.post_id;
-		var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_[pid];
-
-	  var uri = 'https://graph.facebook.com/v2.8/'+post_id+'/comments';
-	  var qs = { 
-	    access_token:PAGE_ACCESS_TOKEN,
-	    fields:'id',
-	    limit:100
-	  };
-
-	  new Sequelize.Promise(function(resolve, reject) {
-
-	      // start first iteration of the loop
-	      nextFBRequest(resolve,reject,{uri:uri,qs:qs},{data:[]},function(r,response){
-	      	
-	      	var list = response.data;
-	      	list.map((item,i)=>{
-	      		item.id === '' ? r.continue = false : null;
-	      	});
-
-	      	return r;
-	      });
-  	}).then(function(r){
-  		res.send({success:true,r:r});
-  	})
-
-	});
-
-
-	router.get('/getposts',function(req,res){
-
-		if(!req.query.pid || !req.query.pid){
-			res.send({success:false,message:'Missing Query Parameters'});
-			return null;
-		}
-
-		var pid = req.query.pid;
-		//var post_id = req.query.post_id;
-		var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_[pid];
-
-	  var uri = 'https://graph.facebook.com/v2.8/'+pid+'/posts';
-	  var qs = { 
-	    access_token:PAGE_ACCESS_TOKEN,
-	    fields:'',
-	    limit:100
-	  };
-
-	  new Sequelize.Promise(function(resolve, reject) {
-
-	      // start first iteration of the loop
-	      nextFBRequest(resolve,reject,{uri:uri,qs:qs},{data:[]},function(r,response){
-	      	
-	      	var list = response.data;
-	      	list.map((item,i)=>{
-	      		item.id === '' ? r.continue = false : null;
-	      	});
-
-	      	return r;
-	      });
-  	}).then(function(r){
-  		res.send({success:true,r:r});
-  	})
-
-	});
-
 
 // MESSENGER SAMPLE FUNCTIONS
 
