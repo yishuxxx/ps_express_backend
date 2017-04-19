@@ -52,7 +52,7 @@ var updateStateDependencies = function(state){
 }
 
 var reducer = function(state={},action=null){
-  console.log(action.type);
+
   switch(action.type){
     case 'PAGES_CREATE':
       FB.api('/me/accounts?access_token='+sy.userAccessToken,function(response){
@@ -90,8 +90,13 @@ var reducer = function(state={},action=null){
             response:response
           });
           rerender();
+        }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+          sy.login();
+        }else if(response.error){
+          alert(response.error.message);
+          sy.error_log.push(response);
         }else{
-          alert('Cannot get the LABELS of this PAGE...')
+          sy.error_log.push(response);
         }
       });
       break;
@@ -118,12 +123,17 @@ var reducer = function(state={},action=null){
       var page_access_token = state.Pages.data[page_index].access_token;
 
       if((!Comments) || (Comments && Comments.paging.next) || type == 'POST_COMMENTS_REFRESH'){
-        var url = '/'+post_id+'/comments?limit=25&access_token='+page_access_token+'&order=reverse_chronological&fields=id,message,from,created_time,can_reply_privately,private_reply_conversation,can_like,comment_count,attachment,is_hidden,is_private';
+        var url = settings.fb.graph_api_url+'/'+post_id+'/comments?limit=25&access_token='+page_access_token+'&order=reverse_chronological&fields=id,message,from,created_time,can_reply_privately,private_reply_conversation,can_like,can_hide,comment_count,attachment,is_hidden,is_private';
         if(Comments && Comments.paging.next && type == 'POST_COMMENTS_LOAD_MORE'){
           url = Comments.paging.next;
         }
 
-        FB.api(url,function(response){
+        fetch(url,{
+          method: 'GET',
+          headers:{"Content-Type": "application/x-www-form-urlencoded"}
+        }).then(function (res) {
+          return res.json();    
+        }).then(function(response){
           if(response.data && response.data.length>0){
             rstore.dispatch({
               type:type+'_RESPONSE_SUCCESS',
@@ -132,12 +142,20 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
-          }else if(response.data && response.data.length === 0){
-            //DO NOTHING
+
+            if(action.hide_comments){
+              sy.hideComments(state,page_index,post_index);
+            }
+
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
+          }else if(response.error){
+            sy.error_log.push(response);
           }else{
-            console.log(response);
+            sy.error_log.push(response);
           }
         });
+
       }else{
         alert('No more COMMENTS to load...')
       }
@@ -176,7 +194,6 @@ var reducer = function(state={},action=null){
       break;
 
     case 'COMMENT_REPLY_BULK_REPLACE':
-      console.log(action.comment_reply);
       if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
           state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0){
         var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
@@ -204,7 +221,7 @@ var reducer = function(state={},action=null){
       
       var page_access_token = state.Pages.data[pa_i].access_token;
       var private_reply = action.private_reply;
-      console.log(private_reply);
+
       if(private_reply.length >= 2){
         FB.api(
           '/'+comment_id+'/private_replies?access_token='+page_access_token+'&message='+private_reply,
@@ -220,10 +237,13 @@ var reducer = function(state={},action=null){
                 private_reply:private_reply
               });
               rerender();
+            }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+              sy.login();
             }else if(response.error){
               alert(response.error.message);
+              sy.error_log.push(response);
             }else{
-              alert('Failed to send private reply...');
+              sy.error_log.push(response);
             }
         });
       }else{
@@ -262,10 +282,13 @@ var reducer = function(state={},action=null){
               rstore.dispatch({
                 type:'LABEL_APPLY_RESPONSE_SUCCESS'
               });
+            }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+              sy.login();
             }else if(response.error){
               alert(response.error.message);
+              sy.error_log.push(response);
             }else{
-              alert('Failed to apply LABEL to USER...');
+              sy.error_log.push(response);
             }
         });
       }
@@ -293,10 +316,13 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
           }else if(response.error){
-              alert(response.error.message);
+            alert(response.error.message);
+            sy.error_log.push(response);
           }else{
-            alert('Failed to get comment reply...');
+            sy.error_log.push(response);
           }
       });
       break;
@@ -324,10 +350,13 @@ var reducer = function(state={},action=null){
               response:response
             });
             rerender();
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
           }else if(response.error){
-              alert(response.error.message);
+            alert(response.error.message);
+            sy.error_log.push(response);
           }else{
-            alert('Failed to get comment reply...');
+            sy.error_log.push(response);
           }
       });
       break;
@@ -355,16 +384,18 @@ var reducer = function(state={},action=null){
               conversation_id:conversation_id
             });
             rerender();
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
           }else if(response.error){
-              alert(response.error.message);
+            alert(response.error.message);
+            sy.error_log.push(response);
           }else{
-            alert('Failed to send message...');
+            sy.error_log.push(response);
           }
       });
       break;
 
     case 'MESSAGE_SEND_RESPONSE_SUCCESS':
-      console.log(action.response);
       break;
 
     case 'AUTO_REFRESH_STRING_CHANGE':
@@ -422,12 +453,12 @@ var sy = {
   scopesNeeded:{
     scope:'read_page_mailboxes,manage_pages,publish_pages,pages_show_list',//pages_messaging,pages_messaging_subscriptions
   },
-  page_access_token:"EAAXQvp1ley8BAAm9ZAplvIEFZCYj6Ghu8xme7G7sFRd7Gh6EPmYUYCOeekxzJD2fAIC5ziKWz0A0PQI1L35SspWUMZAhFZA9oa4TypnCDW2LZBSwZBdZB8SuI81YwDdOw4UIsB11jkqyqWgxNHQXaHOBP5Q0xjkuG9ZAwWyfyoLdqZCZBNpZAAz6VtiUMpUOSu2oaAZD",
-  page_access_token_messenger:"EAAVYvwYDnMcBAKde6kLAxgrzJAEA6FExnfdO8kX2NV5XGqlnv9A80bprje8X7rpyneQ2DrmfvEM5LqHpUd0ebDGZBOLMMebK7eZCpMCqmuhBOpe5dDGb54zYPLbvb63A2hHs9AvZBzRBfQqZBh7FJoAGLTspUKt94ihC6zt2ZBgZDZD"
+  login_count:0,
+  error_log:[],
 };
 
 sy.login = function(){
-  setTimeout(function(){ sy.login(); }, 1800*1000);
+  sy.login_count = sy.login_count + 1;
   FB.getLoginStatus(function(response){
     if (response.status === 'connected') {
       sy.is_login_fb = true;
@@ -484,41 +515,7 @@ sy.checkLoginStatus = function(){
     }
   });
 }
-
-sy.getPagePosts = function(callback,page_id){
-  FB.api('/1661200044095778/posts',function(response){
-    console.log(response);
-  });
-}
-
-sy.getPostComments = function(){
-  FB.api('/1661200044095778_1713720265510422/comments?access_token='+sy.pageAuthResponse.data[0].access_token+'&order=reverse_chronological&fields=id,message,created_time,can_reply_privately,private_reply_conversations{message}',function(response){
-    console.log(response);
-  })
-}
-
-sy.getComment = function(){
-  FB.api('/1713720265510422_1859310267618087?access_token='+sy.pageAuthResponse.data[0].access_token+'&fields=can_reply_privately',function(response){
-    console.log(response);
-  })
-}
-
-sy.replyComment = function(){
-  FB.api(
-    '/1713720265510422_1859310267618087/private_replies?access_token='+sy.pageAuthResponse.data[0].access_token+'&message=hello',
-    'POST',
-    function(response){
-      console.log(response);
-  });
-
-  FB.api(
-    '/1713720265510422_1859310267618087/comments?access_token='+sy.pageAuthResponse.data[0].access_token+'&message=你好',
-    'POST',
-    function(response){
-      console.log(response);
-  });
-}
-
+/*
 sy.message = function(){
   FB.api(
     '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+sy.pageAuthResponse.data[0].access_token+'&fields=message,created_time,from,to',
@@ -564,16 +561,6 @@ sy.sendMessage = function(){
   };
 
   sy.callSendAPI(messageData);
-
-  /*
-  FB.api(
-    '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+sy.pageAuthResponse.data[0].access_token+'&fields=message,created_time,from,to',
-    'POST',
-    messageData,
-    function(response){
-      console.log(response);
-    });
-  */
 }
 
 sy.callSendAPI = function (messageData) {
@@ -587,7 +574,7 @@ sy.callSendAPI = function (messageData) {
     console.log(response);
   });
 }
-
+*/
 sy.parseAutoRefreshList = function(str){
   var state = rstore.getState();
   var page_posts = str.split("\n");
@@ -639,10 +626,15 @@ sy.getPostIndex = function(page_id,post_id){
 sy.queueAutoRefresh = function(){
   var state = rstore.getState();
   if(state.auto_refresh_queue && state.auto_refresh_queue.length >= 1){
+    var page_index = state.auto_refresh_queue[0][0];
+    var post_index = state.auto_refresh_queue[0][1];
+    var hide_comments = (state.auto_refresh_queue[0][2] === '0') ? false : true;
+
     rstore.dispatch({
       type:'POST_COMMENTS_REFRESH',
-      page_index:state.auto_refresh_queue[0][0],
-      post_index:state.auto_refresh_queue[0][1]
+      page_index:page_index,
+      post_index:post_index,
+      hide_comments:hide_comments
     });
 
     rstore.dispatch({
@@ -656,30 +648,45 @@ sy.queueAutoRefresh = function(){
         type:'AUTO_REFRESH_TOGGLE'
       });
     }
-
     rerender();
   }
   
 }
 
-window.sy = sy;
-/*
-class OutputComments extends Component{
-  constructor(props,context) {
-    super(props,context);
-  }
+sy.hideComments = function(state,page_index,post_index){
+  var Comments = state.Pages.data[page_index].Posts.data[post_index].Comments.data;
+  var page_access_token = state.Pages.data[page_index].access_token;
 
-  render(){
-    return(
-      <table>
-      <tbody>
-        <tr><td></td></tr>
-      </tbody>
-      </table>
-    );
-  }
+  Comments.map((Comment,i)=>{
+    if(Comment.is_hidden === false && Comment.can_hide === true){
+      FB.api(
+        '/'+Comment.id+'?access_token='+page_access_token+'&is_hidden='+true,
+        'POST',
+        function(response){
+          if(response.success){
+            rstore.dispatch({
+              type:'COMMENT_TOGGLE_RESPONSE_SUCCESS',
+              page_index:page_index,
+              post_index:post_index,
+              comment_index:i,
+              is_hidden:true
+            });
+            rerender();
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
+          }else if(response.error){
+            alert(response.error.message);
+            sy.error_log.push(response);
+          }else{
+            sy.error_log.push(response);
+          }
+      });
+    }
+  });
 }
-*/
+
+window.sy = sy;
+
 class AutoReplyApp extends Component{
   constructor(props,context) {
     super(props,context);
@@ -719,6 +726,7 @@ class AutoReplyApp extends Component{
 }
 
 class CommentHistory extends Component{
+
   constructor(props,context) {
     super(props,context);
     this.state = {post_id:''};
@@ -1002,8 +1010,13 @@ class PageManager extends Component{
           response:response
         });
         rerender();
+      }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+        sy.login();
+      }else if(response.error){
+        alert(response.error.message);
+        sy.error_log.push(response);
       }else{
-        alert('Cannot get all the POSTS of this PAGE...')
+        sy.error_log.push(response);
       }
     });
   }
@@ -1090,7 +1103,8 @@ class PostManager extends Component{
     rstore.dispatch({
       type:type,
       page_index:page_index,
-      post_index:post_index
+      post_index:post_index,
+      hide_comments:false
     });
     rerender();
 
@@ -1233,7 +1247,6 @@ class CommentManager extends Component{
       comment_index:this.props.index,
       private_reply:event.target.value
     });
-
   }
 
   handlePrivateReplyClick = (event) => {
@@ -1241,7 +1254,7 @@ class CommentManager extends Component{
     var pa_i = event.target.attributes.getNamedItem('data-page-index').value;
     var po_i = event.target.attributes.getNamedItem('data-post-index').value;
     var c_i = event.target.attributes.getNamedItem('data-index').value;
-    console.log(this.state.private_reply);
+
     rstore.dispatch({
       type:'PRIVATE_REPLY_SUBMIT',
       page_index:pa_i,
@@ -1271,7 +1284,7 @@ class CommentManager extends Component{
   }
 
   handleCommentReplyClick = (event) => {
-    console.log(this.state);
+
     var state = rstore.getState();
     var page_index = event.target.attributes.getNamedItem('data-page-index').value;
     var post_index = event.target.attributes.getNamedItem('data-post-index').value;
@@ -1297,10 +1310,13 @@ class CommentManager extends Component{
               comment_reply:comment_reply
             });
             rerender();
+          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+            sy.login();
           }else if(response.error){
-              alert(response.error.message);
+            alert(response.error.message);
+            sy.error_log.push(response);
           }else{
-            alert('Failed to send private reply...');
+            sy.error_log.push(response);
           }
       });
     }else{
@@ -1368,10 +1384,13 @@ class CommentManager extends Component{
             is_hidden:!is_hidden
           });
           rerender();
+        }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
+          sy.login();
         }else if(response.error){
           alert(response.error.message);
+          sy.error_log.push(response);
         }else{
-          console.log(response);
+          sy.error_log.push(response);
         }
     });
   }
@@ -1590,7 +1609,5 @@ var rerender = function(){
   render(<AutoReplyApp state={rstore.getState()} />, document.getElementById('app'));
 }
 window.rerender = rerender;
-// Render the main app react component into the app div.
-// For more details see: https://facebook.github.io/react/docs/top-level-api.html#react.render
-//rstore.subscribe(rerender);
+
 rerender();
