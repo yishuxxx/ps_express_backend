@@ -1,5 +1,5 @@
 var settings = {
-	base_dir:'',		// 
+	base_dir:'',		// /api
 	db_host:'localhost',	//localhost
 	db_name:'sycommy_shop', //sycommy_shop
 	db_user:'root',	//sycommy_shop
@@ -8,7 +8,8 @@ var settings = {
 	fb:{
 		app_id:'610612705804936', //610601409139399
 		app_secret:'cf682be6c2942e8af05c7a5ea13ce065', //b2dc0e4b7dd44436614eb4d72381e150
-		base_url:'https://www.facebook.com/'
+		base_url:'https://www.facebook.com/',
+		graph_api_url:'https://graph.facebook.com/v2.8'
 	}
 }
 
