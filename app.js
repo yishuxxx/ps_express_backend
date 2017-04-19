@@ -8,6 +8,8 @@ var bodyParser = require('body-parser');
 var multer = require('multer'); // v1.0.5
 var upload = multer(); // for parsing multipart/form-data
 var session = require('express-session');
+var RedisStore = require('connect-redis')(session);
+var redis = require('redis-url').connect();
 var request = require('request');
 var rq = require('request-promise');
 var crypto = require('crypto');
@@ -24,6 +26,7 @@ var md5 = require('crypto-js/md5');
 var {settings} = require('./settings');
 
 var passport = require('passport');
+var passportSocketIo = require('passport.socketio');
 var LocalStrategy = require('passport-local').Strategy;
 
 var app = express();
@@ -51,7 +54,6 @@ var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_pa
   },
 
 });
-var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io);
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -67,17 +69,21 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 //for login session
+var sessionStore = new RedisStore({ client: redis });
 app.use(session({
+    store: sessionStore,
     secret: 'keyboard cat',
     proxy: true,
     resave: true,
     saveUninitialized: false
 }));
+// Sets up a session store with Redis
+
 
 app.use(passport.initialize());
 app.use(passport.session());
 //for routing
-app.use('/msg', msg.router);
+//app.use('/msg', msg.router);
 
 //____MIDDLEWARE END
 
@@ -443,11 +449,20 @@ passport.use(new LocalStrategy( function(username, password, done) {
 
 }));
 
+io.use(passportSocketIo.authorize({
+  key: 'connect.sid',
+  secret: 'keyboard cat',
+  store: sessionStore,
+  passport: passport,
+  cookieParser: cookieParser
+}));
+
 app.all([
 	'/order/get/:id',
 	'/order/update/:id',
 	'/fastpage',
-	'/inputpage'
+	'/inputpage',
+	'/msg/bulk2'
 ],function(req,res,next){
 	console.log('################## INSIDE req.user checking function');
 	console.log(req.user);
@@ -479,6 +494,9 @@ app.all([
 		}
 	});
 });
+
+var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io);
+app.use('/msg', msg.router);
 
 app.get('/login',function(req,res){
 	res.render('./login',{data:{redirect:req.query.redirect}});
