@@ -15,7 +15,6 @@ var updateStateDependencies = function(state){
 }
 
 var reducer = function(state={},action=null){
-  console.log(action.type);
   switch(action.type){
     case 'USER_CHANGE':
       state[action.name] = action.value;
@@ -33,20 +32,13 @@ class LoginForm extends Component{
   constructor(props,context) {
     super(props,context);
     this.state = props;
-    console.log('inside constructor');
-    console.log(props);
   }
 
   componentWillUpdate(nextProps, nextState){
     // perform any preparations for an upcoming update
-    console.log('inside componentWillUpdate');
-    console.log(nextProps);
-    console.log(nextState);
   }
 
   componentWillReceiveProps(nextProps){
-    console.log('inside componentWillReceiveProps');
-    console.log(nextProps);
   }
 
   handleChange = (event) => {
