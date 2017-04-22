@@ -1,5 +1,5 @@
-module.exports.FBConversationFunc = function(Sequelize,sequelize){
-    return sequelize.define('FBConversation',{
+module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
+    return sequelize.define('FBAttachment',{
       "id": {
         "type": "INT(11) UNSIGNED",
         "allowNull": false,
@@ -19,74 +19,56 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         defaultValue: null,
         "primaryKey": false
       },
-      "t_mid": {
-        "type": "VARCHAR(64)",
+      "attachment_id": {
+        "type": "BIGINT(20) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true
       },
-      "pid": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "uid": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "pid_uid": {
+      "m_mid": {
         "type": "VARCHAR(64)",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
-      "psid": {
-        "type": "BIGINT(20) UNSIGNED",
+      "mime_type": {
+        "type": "VARCHAR(16)",
         "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "link": {
-        "type": "VARCHAR(128)",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "updated_time": {
-        "type": "DATETIME",
-        "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
       "name": {
         "type": "VARCHAR(64)",
-        "allowNull": false,
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "snippet": {
+      "image_data": {
         "type": "TEXT",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "unread_count": {
+      "file_url": {
+        "type": "VARCHAR(128)",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "size": {
         "type": "INT(11) UNSIGNED",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "message_count": {
-        "type": "INT(11) UNSIGNED",
-        "allowNull": false,
+      "video_data": {
+        "type": "TEXT",
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       }
     },{
-        tableName:'fb_conversation',
+        tableName:'fb_attachment',
         timestamps:false,
         createdAt:false,
         updatedAt:false,

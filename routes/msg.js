@@ -15,7 +15,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 	// Arbitrary value used to validate a webhook
 	const VALIDATION_TOKEN = 'TheOneAndOnlyToken';
 	// Generate a page access token for your page from the App Dashboard
-	const PAGE_ACCESS_TOKEN = 'EAAIrWVlswogBAG38edlWENOvy3sVtYJZC7qIMGdCMPP0FdWZBMIyvVzaZByLxtB44PNZC3CPlWSULQEo7oL481jB0ZBF0oYXmOruQQAgyIzDp6Unrl9aHjaSWnumKTyBh7XvHQQeu0mqd7Bv2FLkKGpBiZCYeCtHHH8STvYISMsgZDZD';
+	const PAGE_ACCESS_TOKEN = 'EAAIrWVlswogBADzmkKyItbSX4WsQQZBhVcHXcocwCapgLZAZCIAm6jlTcJE3Ay0cVBxpjZAs2CMfWf1mMcgXRfxrUaN8ai5JYz6VKU769qZBnS5SLZBNUki31bm2rxWZBOfZCGUT6UPXZBZAEULve2U67n4vbbt5E4kEw3P6kT0mx27gZDZD';
 
 	// URL where the app is running (include protocol). Used to point to scripts and
 	// assets located at this address.
@@ -36,6 +36,13 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 	let FBConversation = FBConversationFunc(Sequelize, sequelize);
 	let {FBPageFunc} = require('../src/models/FBPage');
 	let FBPage = FBPageFunc(Sequelize, sequelize);
+	let {FBAttachmentFunc} = require('../src/models/FBAttachment');
+	let FBAttachment = FBAttachmentFunc(Sequelize, sequelize);
+
+	FBConversation.hasMany(FBMessage, {as:'messages',foreignKey:'t_mid'});
+	FBMessage.belongsTo(FBConversation, {foreignKey:'t_mid'});
+	FBMessage.hasMany(FBAttachment, {foreignKey:'m_mid'});
+	FBAttachment.belongsTo(FBMessage, {foreignKey:'m_mid'});
 
 	let PAGE_ACCESS_TOKEN_;
 	let initialize = function() {
@@ -57,8 +64,143 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 		console.log('connected to socket client');
 		console.log(socket.request.user);
 
-		let addedUser = false;
+		socket.on('GET_CONVERSATIONS', function(data) {
 
+			var pid = data.filter.pid;
+			var before = moment.utc(data.filter.before).format("YYYY-MM-DD HH:mm:ss");
+			var limit = data.filter.limit;
+			var list_i = data.list_i;
+			var r = {};
+
+			FBConversation.findAll({
+				where:{
+					pid:pid,
+					updated_time:{$lt:before}
+				},
+				order:[['updated_time','DESC']],
+				limit:limit
+			}).then(function(FBConversations){
+				var promises = [];
+				if(FBConversations && FBConversations.length>=1){
+					r.FBConversations = FBConversations;
+					FBConversations.map((FBConversation,i)=>{
+						promises.push(
+							FBMessage.findAll({
+								where:{t_mid:FBConversation.t_mid},
+					    	include:[{
+					    		model:FBAttachment,
+					    	}],
+								order:[['created_time','DESC']],
+								limit:10
+							}).then(function(FBMessages){
+								FBMessages.map((FBMessage,i)=>{
+									if(FBMessage.FBAttachments && FBMessage.FBAttachments.length >=1){
+										FBMessage.setDataValue('attachments',{data:FBMessage.FBAttachments});
+									}
+									FBMessage.setDataValue('from',{id:FBMessage.uid_from});
+									FBMessage.setDataValue('to',{id:FBMessage.uid_to});
+								});
+								r.FBConversations[i].setDataValue('messages',{data:FBMessages});
+								return FBMessages;
+							})
+						);//END PUSH
+					});//END MAP
+				}
+
+				return Sequelize.Promise.all(promises);
+			}).then(function(FBMessages_list){
+				var Conversations = r.FBConversations;
+				if(Conversations && Conversations.length>=1){
+					socket.emit('GET_CONVERSATIONS', {
+						data:r.FBConversations,
+						paging:{next:{
+							pid:pid,
+							before:Conversations[Conversations.length-1].updated_time,
+							limit:limit
+						}},
+						list_i:list_i
+					});
+				}else{
+					socket.emit('ERROR', {
+						code:'',
+						error_subcode:'',
+						message:'No CONVERSATIONS available with this filter',
+					});
+				}
+			});
+			
+		});
+
+		socket.on('GET_MESSAGES',function(data){
+
+			var before = data.before;
+			var t_mid = data.t_mid;
+			var limit = data.limit;
+			var r = {};
+			console.log('GET_MESSAGES');
+			console.log(data);
+
+			FBMessage.findAll({
+				where:{
+					t_mid:t_mid,
+					created_time:{$lt:before}
+				},
+	    	include:[{
+	    		model:FBAttachment,
+	    	}],
+				order:[['created_time','DESC']],
+				limit:limit
+			}).then(function(FBMessages){
+				if(FBMessages && FBMessages.length>= 1){
+					FBMessages.map((FBMessage,i)=>{
+						if(FBMessage.FBAttachments && FBMessage.FBAttachments.length >=1){
+							FBMessage.setDataValue('attachments',{data:FBMessage.FBAttachments});
+						}
+						FBMessage.setDataValue('from',{id:FBMessage.uid_from});
+						FBMessage.setDataValue('to',{id:FBMessage.uid_to});
+					});
+					r.FBMessages = FBMessages;
+					return FBMessages;
+				}
+			}).then(function(FBMessages){
+				if(FBMessages && FBMessages.length >= 1){
+					socket.emit('GET_MESSAGES', {
+						t_mid:t_mid,
+						data:FBMessages,
+						paging:{next:{}},
+						success:true,
+					});
+					return false;
+				}else{
+					return Sequelize.Promise.all([
+						FBConversation.findOne({
+							where:{t_mid:t_mid}
+						}),
+						FBMessage.count({
+							where:{t_mid:t_mid}
+						})
+					]);
+				}
+			}).spread(function(FBConversation,message_count){
+				if(FBConversation && message_count){
+					if(FBConversation.message_count > message_count){
+
+						return getmessages(FBConversation.pid,FBConversation.t_mid,100).then(function(r){
+							socket.emit('GET_MESSAGES', {
+								t_mid:t_mid,
+								data:r.data,
+								paging:{next:{}},
+								success:false,
+								message:'Need to call graph api for more data'
+							});
+						});
+
+					}
+				}
+			});
+		});
+
+		let addedUser = false;
 		// when the client emits 'new message', this listens and executes
 		socket.on('new message', function(data) {
 			// we tell the client to execute 'new message'
@@ -199,6 +341,10 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 		res.render('bulk_immutable');
 	});
 
+	router.get('/msger', function(req, res) {
+		res.render('msger');
+	});
+
 	router.get('/getlongtoken', function(req, res) {
 		res.render('getlongtoken');
 	});
@@ -303,12 +449,12 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 				}else{
 					res.send(Conversation);
 					console.log('############################## ENDED');
-					let mids = [];
+					let m_mids = [];
 					Conversation.data.map(function(Message, index) {
-						mids.push(Message.id.substring(2, Message.id.length));
+						m_mids.push(Message.id);
 					});
 					FBMessage.findAll({
-						where: {mid: mids},
+						where: {m_mid: m_mids},
 					}).then(function(FBMessages) {
 						// IF any message is sent or delivered before through  platform
 						if(FBMessages && FBMessages.length >= 1) {
@@ -364,6 +510,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 				}else if(response.error) {
 					throw new Error(response.error.message);
 				}else{
+					console.log(response);
 					throw new Error('Unexpected Facebook response');
 				}
 				return r;
@@ -420,7 +567,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 								comment_id: Comment.id,
 								post_id: post_id,
 								uid: Comment.from.id,
-								tid: null,
+								t_mid: null,
 								message: Comment.message,
 								can_reply_privately: Comment.can_reply_privately,
 								can_comment: Comment.can_comment,
@@ -451,12 +598,17 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 		let pid = req.query.pid;
 		let PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_[pid];
 		let last_message_date = moment(req.query.last_message_date);
+		let result = {};
 
+		var count_conv = 0;
+		var count_msg = 0;
+
+console.log('STARTED ANOTHER REQUEST???');
 		new Sequelize.Promise(function(resolve, reject) {
 				let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
 				let qs = {
 					access_token: PAGE_ACCESS_TOKEN,
-					fields: 'link,id,message_count,snippet,updated_time,unread_count,senders',
+					fields: 'link,id,message_count,snippet,updated_time,unread_count,senders,messages{message,id,created_time,from,to,attachments}',
 					limit: 100,
 				};
 
@@ -465,19 +617,18 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 					let list = response.data;
 					list.map((item, i)=>{
 						let tmp = last_message_date.diff(moment(item.updated_time), 'seconds');
-						console.log(tmp + '___' + (tmp >= 0));
+						i === 0 ? console.log(item.updated_time+'___'+tmp + '___' + (tmp >= 0)) : null;
 						if(last_message_date.diff(moment(item.updated_time), 'seconds') >= 0) {
 							r.continue = false;
 						}
 					});
-
+					result = r;
 					return r;
 				});
 		}).then(function(r) {
-			let promises = [];
-			r.data.map((Conversation, i)=>{
-				promises.push(
-					FBConversation.upsert({
+
+			return Sequelize.Promise.mapSeries(r.data,function(Conversation){
+					return FBConversation.upsert({
 							pid: Conversation.senders.data[1].id,
 							uid: Conversation.senders.data[0].id,
 							pid_uid: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
@@ -495,33 +646,115 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 							},
 						}
 					)
-					/*
-					FBConversation.findOrCreate({
-						where : {
-							t_mid				: Conversation.id
+			});
+		}).then(function(Instances) {
+			/*
+			return Sequelize.Promise.mapSeries(result.data,function(Conversation){
+				count_conv = count_conv + 1;
+				console.log(count_conv);
+				return Sequelize.Promise.mapSeries(Conversation.messages.data,function(Message){
+					count_msg = count_msg + 1;
+					console.log(count_msg);
+					return FBMessage.upsert({
+						m_mid: Message.id,
+						t_mid: Conversation.id,
+						created_time: Message.created_time,
+						uid_from: Message.from.id,
+						uid_to: Message.to.data[0].id,
+						message: Message.message,
+						attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
+					},{
+						where: {
+							m_mid: Message.id,
 						},
-						defaults: {
-							pid					: Conversation.senders.data[1].id,
-							uid 				: Conversation.senders.data[0].id,
-							pid_uid			: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
-							t_mid 			: Conversation.id,
-							psid 				: null,
-							updated_time: Conversation.updated_time,
-							link 				: Conversation.link,
-							name 				: Conversation.senders.data[0].name,
-							snippet 		:	Conversation.snippet,
-							message_count	: Conversation.message_count,
-							unread_count	: Conversation.unread_count
+					});
+				})
+			});
+			*/
+
+			return Sequelize.Promise.mapSeries(result.data,function(Conversation){
+				count_conv = count_conv + 1;
+				console.log(count_conv);
+				return Sequelize.Promise.mapSeries(Conversation.messages.data,function(Message){
+					count_msg = count_msg + 1;
+					console.log(count_msg);
+					return FBMessage.upsert({
+						m_mid: Message.id,
+						t_mid: Conversation.id,
+						created_time: Message.created_time,
+						uid_from: Message.from.id,
+						uid_to: Message.to.data[0].id,
+						message: Message.message,
+						attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
+					},{
+						where: {
+							m_mid: Message.id,
+						},
+					}).then(function(FBMessage){
+						if(FBMessage && Message.attachments && Message.attachments.data.length >= 1){
+							/*
+							var Attachment = Message.attachments.data[0];
+							return FBAttachment.upsert({
+								attachment_id:Attachment.id,
+								m_mid:Message.id,
+								mime_type:Attachment.mime_type,
+								name:Attachment.name,
+								image_data:JSON.stringify(Attachment.image_data),
+								file_url:Attachment.file_url,
+								size:Attachment.size,
+								video_data:JSON.stringify(Attachment.video_data)
+							});
+							*/
+							var Attachments = Message.attachments.data;
+							return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
+								return FBAttachment.upsert({
+									attachment_id:Attachment.id,
+									m_mid:Message.id,
+									mime_type:Attachment.mime_type,
+									name:Attachment.name,
+									image_data:JSON.stringify(Attachment.image_data),
+									file_url:Attachment.file_url,
+									size:Attachment.size,
+									video_data:JSON.stringify(Attachment.video_data)
+								});
+							});
 						}
 					})
-					*/
-				);
+				})
 			});
-			return Sequelize.Promise.all(promises);
-		}).then(function(Instances) {
-			res.send({success: true, length: Instances.length});
+
+		}).then(function(Instances){
+			res.send({success: true, count_conv: count_conv, count_msg: count_msg});
+		}).catch(function(err){
+			console.log(err);
+			res.send({success: false, message:err});
 		});
 	});
+
+	function getmessages(pid,t_mid,limit){
+
+		let PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_[pid];
+
+		let uri = 'https://graph.facebook.com/v2.8/'+t_mid+'/messages';
+		let qs = {
+			access_token: PAGE_ACCESS_TOKEN,
+			fields: 'id,message,created_time,from,to,attachments',
+			limit: limit,
+		};
+
+		return new Sequelize.Promise(function(resolve, reject) {
+			// start first iteration of the loop
+			nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
+				let list = response.data;
+				list.map((item, i)=>{
+					item.id === '' ? r.continue = false : null;
+				});
+
+				return r;
+			});
+		});
+
+	}
 
 	router.get('/getmessages', function(req, res) {
 		if(!req.query.pid || !req.query.t_mid) {
@@ -718,9 +951,9 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 		let quickReply = message.quick_reply;
 
 			FBMessage.create({
-				mid: message.mid,
+				m_mid: 'm_'+message.mid,
 				seq: message.seq,
-				text: message.text,
+				message: message.text,
 				pid: '',
 				psid_recipient: event.recipient.id,
 				psid_sender: event.sender.id,
@@ -835,7 +1068,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 
 				let r = {};
 				FBMessage.findOne({
-					where: {mid: messageID},
+					where: {m_mid: 'm_'+messageID},
 				}).then(function(Instance) {
 					r.FBMessage = Instance;
 					if(r.FBMessage) {
@@ -844,9 +1077,9 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 					}else{
 						// This is the delivery confirmation of the first message in the conversation
 						return FBMessage.create({
-							mid: messageID,
+							m_mid: 'm_'+messageID,
 							seq: null,
-							text: 'FIRST_PM',
+							message: 'FIRST_PM',
 							pid: event.sender.id,
 							psid_recipient: event.recipient.id,
 							psid_sender: event.sender.id,
@@ -1197,7 +1430,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 							price: 599.00,
 							currency: 'USD',
 							image_url: SERVER_URL + '/assets/riftsq.png',
-						}, {
+						},{
 							title: 'Samsung Gear VR',
 							subtitle: 'Frost White',
 							quantity: 1,
@@ -1365,9 +1598,9 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 				let messageId = body.message_id;
 
 					FBMessage.create({
-						mid: messageId,
+						m_mid: 'm_'+messageId,
 						seq: null,
-						text: messageData.message.text,
+						message: messageData.message.text,
 						pid: settings.fb.page_id,
 						psid_recipient: recipientId,
 						psid_sender: settings.fb.page_id,

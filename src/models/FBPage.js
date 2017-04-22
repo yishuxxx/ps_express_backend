@@ -1,17 +1,29 @@
 module.exports.FBPageFunc = function(Sequelize,sequelize){
     return sequelize.define('FBPage',{
       "id": {
-        "type": "INT(11)",
+        "type": "INT(11) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
-        "primaryKey": true,
+        "primaryKey": false,
         autoIncrement: true
       },
+      "created_at": {
+        "type": "TIMESTAMP",
+        allowNull: true,
+        defaultValue: null,
+        "primaryKey": false
+      },
+      "updated_at": {
+        "type": "TIMESTAMP",
+        allowNull: true,
+        defaultValue: null,
+        "primaryKey": false
+      },
       "pid": {
-        "type": "VARCHAR(20)",
+        "type": "BIGINT(20) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
-        "primaryKey": false
+        "primaryKey": true
       },
       "name": {
         "type": "VARCHAR(64)",
@@ -36,24 +48,12 @@ module.exports.FBPageFunc = function(Sequelize,sequelize){
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
-      },
-      "created_time": {
-        "type": "TIMESTAMP",
-        "allowNull": false,
-        "defaultValue": "CURRENT_TIMESTAMP",
-        "primaryKey": false
-      },
-      "updated_time": {
-        "type": "TIMESTAMP",
-        "allowNull": false,
-        "defaultValue": "0000-00-00 00:00:00",
-        "primaryKey": false
       }
     },{
         tableName:'fb_page',
-        timestamps:true,
-        createdAt:'created_time',
-        updatedAt:'updated_time',
+        timestamps:false,
+        createdAt:false,
+        updatedAt:false,
         deletedAt:false,
         underscored:true,
         scopes:{}

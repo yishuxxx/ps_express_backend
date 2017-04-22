@@ -515,6 +515,15 @@ sy.checkLoginStatus = function(){
     }
   });
 }
+
+sy.message = function(){
+  FB.api(
+    '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+rstore.getState().Pages.data[0].access_token+'&fields=message,created_time,from,to,attachments',
+    function(response){
+      console.log(response);
+  });
+}
+
 /*
 sy.message = function(){
   FB.api(

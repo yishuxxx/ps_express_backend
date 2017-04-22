@@ -8,6 +8,11 @@ import moment from 'moment';
 //import { syDateFormat } from './Utils/Helper';
 //import {Map} from 'immutable';
 import Immutable from 'seamless-immutable';
+window.Immutable = Immutable;
+//FOR Chat
+import ReactDatetime from 'react-datetime';
+import ReactSelect from 'react-select';
+import {randomString} from './Utils/Helper';
 
 window.fbAsyncInit = function() {
   FB.init({
@@ -468,7 +473,6 @@ class ConversationListBox extends Component{
 
   onKeyPress = (event) => {
 
-
     var list = ['1','2','3','4','5','6','7','8','9'];
     if(list.findIndex((x,i)=>(x===event.key))!== -1){
       rstore.dispatch({
@@ -586,22 +590,6 @@ class ConversationListBox extends Component{
     );
   }
 }
-/*
-class ConversationFilter extends Component{
-  render(){
-    return(
-      <section className="ConversationFilter">
-        <input className="form-control"/>
-        <input className="form-control"/>
-        <input className="form-control"/>
-        <input className="form-control"/>
-        <button></button>
-      </section>
-    );
-  }
-}
-*/
-
 
 class MessageManager extends Component{
   constructor(props,context) {
@@ -687,6 +675,54 @@ class MessageManager extends Component{
 
 }
 
+class BulkMessageQueue extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {bulk_message:''}
+  }
+
+  handleMessageChange = (event) => {
+    this.setState({bulk_message:event.target.value});
+    rstore.dispatch({
+      type:'CHANGE_BULK_MESSAGE',
+      i:this.props.i,
+      bulk_message:event.target.value
+    });
+  }
+
+  handleAddBulkMessageQueue = (event) => {
+    rstore.dispatch({
+      type:'ADD_BULK_MESSAGE_QUEUE',
+      i:this.props.i,      
+      message:this.state.bulk_message
+    });
+    rerender();
+  }
+
+  render(){
+    return(
+      <section className="BulkMessageQueue">
+        <textarea className="form-control" value={this.state.bulk_message} onChange={this.handleMessageChange}/>
+        <button className="btn btn-info btn-block" onClick={this.handleAddBulkMessageQueue}>QUEUE</button>
+      </section>
+    );
+  }
+}
+
+
+class BulkMessageSender extends Component{
+  handleSendBulkMessage = (event) => {
+    appdata.SEND_BULK_MESSAGE();
+  }
+
+  render(){
+    return(
+      <section className="BulkMessageSender">            
+        <button className="btn btn-primary btn-lg" onClick={this.handleSendBulkMessage}>SEND <span className="badge">{this.props.bulk_message_queue_counter}</span></button>
+      </section>
+    );
+  }
+}
 
 class ChatManager extends Component{
   constructor(props,context) {
@@ -752,50 +788,354 @@ class ChatManager extends Component{
 
 }
 
-class BulkMessageQueue extends Component{
+class ConvLoadFilter extends Component{
+
   constructor(props,context) {
     super(props,context);
-    this.state = {bulk_message:''}
+    this.state = {
+      replied_by:[],
+      last_replied_by:'',
+      products_asked:[]
+    };
   }
 
-  handleMessageChange = (event) => {
-    this.setState({bulk_message:event.target.value});
-    rstore.dispatch({
-      type:'CHANGE_BULK_MESSAGE',
-      i:this.props.i,
-      bulk_message:event.target.value
-    });
+  handleSelectRepliedBy = (all_selected_options) =>{
+    this.setState({replied_by:all_selected_options});
+  }
+  
+  handleSelectLastRepliedBy = (all_selected_options) =>{
+    this.setState({last_replied_by:all_selected_options});
   }
 
-  handleAddBulkMessageQueue = (event) => {
-    rstore.dispatch({
-      type:'ADD_BULK_MESSAGE_QUEUE',
-      i:this.props.i,      
-      message:this.state.bulk_message
-    });
-    rerender();
+  handleSelectProductsAsked = (all_selected_options) =>{
+    this.setState({products_asked:all_selected_options});
   }
 
-  render(){
+  render() {
     return(
-      <section className="BulkMessageQueue">
-        <textarea className="form-control" value={this.state.bulk_message} onChange={this.handleMessageChange}/>
-        <button className="btn btn-info btn-block" onClick={this.handleAddBulkMessageQueue}>QUEUE</button>
+      <section className="ConvLoadFilter">
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Page :</span>
+          <div className="btn-group">
+            <button type="button" className="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+              Action <span className="caret"></span>
+            </button>
+            <ul className="dropdown-menu">
+              <li><a data-pid="1769068019987617">SY Online Venture</a></li>
+              <li><a data-pid="1825720017685240">SY Online Venture MY</a></li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Until :</span>
+          <ReactDatetime />
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Replied:</span>
+          <ReactSelect 
+            name="replied_by"
+            value={this.state.replied_by.map((item,i)=>(item.value)).join(',')}
+            options={[
+              { value: '1231123123', label: 'Yishu Foo' },
+              { value: '4564564564', label: 'Vermillion Ng' }
+            ]}
+            onChange={this.handleSelectRepliedBy} 
+            multi={true}
+          />
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Last :</span>
+          <ReactSelect 
+            name="last_replied_by"
+            value={this.state.last_replied_by ? this.state.last_replied_by.value : ''}
+            options={[
+              { value: '1231123123', label: 'Yishu Foo' },
+              { value: '4564564564', label: 'Vermillion Ng' }
+            ]}
+            onChange={this.handleSelectLastRepliedBy} 
+            multi={false}
+          />
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Asked :</span>
+          <ReactSelect 
+            name="products_asked"
+            value={this.state.products_asked.map((item,i)=>(item.value)).join(',')}
+            options={[
+              { value: 'USB_2IN1', label: 'USB_2IN1' },
+              { value: 'CAR_RECORDER_WD', label: 'CAR_RECORDER_WD' }
+            ]}
+            onChange={this.handleSelectProductsAsked} 
+            multi={true}
+          />
+        </div>
+
       </section>
     );
   }
 }
 
+class Accordion extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {unique_key:randomString('16','#aA')};
+  }
+  render(){
+    return(
+      <div className="panel-group" id="accordion" role="tablist" aria-multiselectable="true">
+        <div className="panel panel-default">
+          <div className="panel-heading" role="tab" id="headingOne">
+            <h4 className="panel-title">
+              <a role="button" data-toggle="collapse" data-parent="#accordion" href={"#"+this.state.unique_key} aria-expanded="true" aria-controls={this.state.unique_key}>
+                {this.props.title}
+              </a>
+            </h4>
+          </div>
+          <div id={this.state.unique_key} className="panel-collapse collapse in" role="tabpanel" aria-labelledby="headingOne">
+            <div className="panel-body">
+              {this.props.children}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
 
-class BulkMessageSender extends Component{
-  handleSendBulkMessage = (event) => {
-    appdata.SEND_BULK_MESSAGE();
+
+class ConversationCard2 extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {highlight:false,show_more_messages:false}; 
+  }
+
+  handleHighlight = (event) => {
+    event.stopPropagation();
+    if(event.shiftKey){
+      rstore.dispatch({
+        type:'CONVERSATION_HIGHLIGHT_SHIFT_CLICK',
+        Conversation:this.props.Conversation
+      });
+      rerender();
+    }else{
+      rstore.dispatch({
+        type:'CONVERSATION_HIGHLIGHT_CLICK',
+        Conversation:this.props.Conversation
+      });
+      rerender();
+    }
+  }
+
+  handleShowMoreMessages = (event) => {
+    event.stopPropagation();
+    this.setState({show_more_messages:true});
+  }
+
+  handleGetMessages = (event) => {
+    event.stopPropagation();
+    rstore.dispatch({
+      type:'GET/<CONVERSATION_ID>/messages',
+      t_mid:this.props.Conversation.id
+    });
   }
 
   render(){
+    var messages = this.props.Conversation.messages.data.slice(0,4);
     return(
-      <section className="BulkMessageSender">            
-        <button className="btn btn-primary btn-lg" onClick={this.handleSendBulkMessage}>SEND <span className="badge">{this.props.bulk_message_queue_counter}</span></button>
+      <section 
+        className={ "ConversationCard2"
+                    +(this.props.Conversation.unread_count ? ' unread' : '')
+                    +(this.props.Conversation.queued_message ? ' alert-warning' : '')
+                    +(this.props.Conversation.sent_message ? ' alert-success' : '')
+                    +(this.props.ConversationC && this.props.Conversation.id === this.props.ConversationC.id ? ' active' : '')
+                  }
+        onClick={this.handleGetMessages}
+      >
+        <Row>
+          <Col md={2}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
+          <Col md={10}>
+            <div>
+              <span className="conversation_header">
+                <span className="sender_name">{this.props.Conversation.senders.data[0].name}</span>
+
+                <span className="label_box">
+                {/*this.props.Conversation.tags.data.length
+                  ? this.props.Conversation.tags.data.map((label,i)=>(
+                    <span key={this.props.Conversation.id+'L'+i} className="label label-default">{label.name}</span>
+                  ))
+                  : null
+                */}
+                </span>
+              </span>
+              <span className="updated_time">{moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')}</span>
+            </div>
+
+            <span className="message" onClick={this.handleShowMoreMessages}>
+              {
+                this.state.show_more_messages 
+                ? (messages.map((message,i)=>(
+                    <div key={message.id}>{message.message}</div>
+                  )))
+                : <div className="snippet">{this.props.Conversation.snippet ? this.props.Conversation.snippet : '[ IMAGE | STICKER ? ]'}</div>
+              }
+            </span>
+          </Col>
+        </Row>
+        
+      </section>
+    );
+  }
+}
+
+class ConversationManager extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {load_more:5,paging_current:0,loading:false};
+  }
+
+  shouldComponentUpdate(nextProps, nextState) {
+    return true;
+  }
+
+  handleLoadMoreChange = (event) => {
+    this.setState({load_more:event.target.value});
+  }
+
+  handleGetMoreConversations = (event) => {
+
+    this.setState({loading:true});
+    var load_more_queue = this.state.load_more;
+    var obj = appdata.GETMORE_CONVERSATIONS(this.props.Page);
+    var url = obj.url;
+    var that = this;
+
+    var getmore = function(url){
+      FB.api(url,function(response){
+        obj.callback(response);
+        if(response.data && load_more_queue > 0 && response.paging && response.paging.next){
+          load_more_queue = load_more_queue - 1;
+          if(load_more_queue){
+            getmore(response.paging.next);
+          }else if(load_more_queue == 0){
+            that.setState({loading:false});
+          }
+        }
+      });
+    }
+    getmore(url);
+  }
+
+  handleFirst = (event) => {
+    this.setState({paging_current:0});
+  }
+
+  handleLast = (event) => {
+    var total_items = this.props.Conversations.data.length;
+    var total_pages = Math.ceil(total_items/100);
+      this.setState({paging_current:total_pages-1});
+  }
+
+  handlePrevious = (event) => {
+    if(this.state.paging_current !== 0){
+      this.setState({paging_current:this.state.paging_current-1});
+    }
+  }
+
+  handleNext = (event) => {
+    var total_items = this.props.Conversations.data.length;
+    var total_pages = Math.ceil(total_items/100);
+    if(this.state.paging_current !== total_pages-1){
+      this.setState({paging_current:this.state.paging_current+1});
+    }
+  }
+
+  handlePagingChange = (event) => {
+    this.setState({paging_current:parseInt(event.target.attributes.getNamedItem('data-paging').value,10)});
+  }
+
+  render(){
+    var paging_per_page = 10;
+    var paging_current = this.state.paging_current;
+    var total_items = this.props.Conversations.data.length;
+    var x10_offset = Math.floor(paging_current/paging_per_page) * paging_per_page;
+    var list = Array.apply(null, {length: paging_per_page}).map(Number.call, Number).map((x,i)=>(x = x + x10_offset));
+    var total_pages = Math.ceil(total_items/100);
+
+    if(this.props.Conversations && this.props.Conversations.data.length >= 1){
+      var PagingBtns = list.map((i,i2)=>{
+        if(i<total_pages){
+          return <button 
+                  key={'paging_'+(i)} 
+                  className={"btn btn-sm"+(this.state.paging_current === i ? " btn-primary" : " btn-default")} 
+                  onClick={this.handlePagingChange} 
+                  data-paging={i} >
+                  {i+1}
+                </button>;
+        }else{
+          return null;
+        }
+      });
+    }
+
+    return(
+      <section className="ConversationManager">
+
+        <Accordion title='Filter'>
+          <ConvLoadFilter />
+        </Accordion>
+
+        <Row className="header">
+          <Col md={1}>No.</Col>
+          <Col md={4}>Name/Msg</Col>
+          <Col md={3}>Time</Col>
+        </Row>
+
+        <div className="ConversationList" tabIndex="1" onKeyPress={this.onKeyPress}>
+
+          {(this.props.Conversations && this.props.Conversations.data.length >= 1)
+            ? this.props.Conversations.data.map((Conversation,index)=>{
+                if(Math.floor(index/100) === this.state.paging_current){
+                  return <ConversationCard2 key={Conversation.id} Conversation={Conversation} ConversationC={this.props.ConversationC} i={index}/>
+                }else{
+                  return null;
+                }
+              })
+            : null
+          }
+        </div>
+
+        {(this.props.Conversations && this.props.Conversations.data.length >= 1)
+          ?  <div className="btn-toolbar" role="toolbar">
+              <div className="btn-group" role="group">
+                <button className="btn btn-sm btn-default" onClick={this.handleFirst}>{"<<"}</button>
+                <button className="btn btn-sm btn-default" onClick={this.handlePrevious}>Prev</button>
+              </div>
+              <div className="btn-group" role="group">
+                {PagingBtns}
+              </div>
+              <div className="btn-group" role="group">
+                <button className="btn btn-sm btn-default" onClick={this.handleNext}>Next</button>
+                <button className="btn btn-sm btn-default" onClick={this.handleLast}>{">>"}</button>
+              </div>
+            </div>
+          : null
+        }
+
+        <Row>
+          <Col md={1}>
+            <input className="load_more_repeat form-control" onChange={this.handleLoadMoreChange} value={this.state.load_more} />
+          </Col>
+
+          <Col md={2}>
+            <button className="btn btn-primary" disabled={this.state.loading} onClick={this.handleGetMoreConversations}>LOAD MORE</button>
+          </Col>
+        </Row>
+
       </section>
     );
   }
@@ -807,6 +1147,7 @@ class MessengerApp extends Component{
     return(
       <section className="MessengerApp">
         <Row>
+
           <Col md={3}>
             {
               this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
@@ -833,6 +1174,7 @@ class MessengerApp extends Component{
               : null
             }
           </Col>
+
           <Col md={3}>
             {
               this.props.state.ConversationC && this.props.state.PageC
@@ -844,9 +1186,24 @@ class MessengerApp extends Component{
         </Row>
 
         <Row>
+
+          <Col md={3}>
+            {
+              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
+              ? <ConversationManager
+                  Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
+                  Conversations={this.props.state.Conversations} 
+                  ConversationC={this.props.state.ConversationC}
+                />
+              : null
+            }
+
+          </Col>
+
           <Col md={3}>
             <ChatManager Messages={this.props.state.Messages ? this.props.state.Messages : null}/>
           </Col>
+
         </Row>
 
       </section>
@@ -873,6 +1230,11 @@ socket.on('login', function (data) {
   //});
   //addParticipantsMessage(data);
   console.log(message);
+});
+
+socket.on('GET_CONVERSATIONS', function (data) {
+  console.log('i got the conversation data');
+  console.log(data);
 });
 
 // Whenever the server emits 'new message', update the chat body
@@ -978,3 +1340,22 @@ function addChatMessage(data, options) {
   addMessageElement($messageDiv, options);*/
   console.log('addChatMessage')
 }
+
+
+function getConversations() {
+  if (connected) {
+    socket.emit('GET_CONVERSATIONS', {
+      pid     : '1769068019987617',
+      before  : '2017-04-19T00:00:00+08:00',
+      limit   : 25,
+      replied_by    : [],
+      last_reply_by : '',
+      id_products_asked   : [],      
+      id_products_bought  : [],
+      tags    : [],
+      enquiry_times  : null
+    });
+  }
+}
+window.getConversations = getConversations;
+window.moment = moment;

@@ -10,6 +10,7 @@ module.exports = {
         privatereply:'./src/privatereply',
         login:'./src/login',
         bulk_immutable:'./src/bulk_immutable',
+        msger:'./src/msger',
         getlongtoken:'./src/getlongtoken'
     },
     output: {
