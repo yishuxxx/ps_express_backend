@@ -1,7 +1,7 @@
-module.exports.FBPageFunc = function(Sequelize,sequelize){
-    return sequelize.define('FBPage',{
+module.exports.FBLabelFunc = function(Sequelize,sequelize){
+    return sequelize.define('FBLabel',{
       "id": {
-        "type": "INT(11) UNSIGNED",
+        "type": "INT(10) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false,
@@ -19,44 +19,26 @@ module.exports.FBPageFunc = function(Sequelize,sequelize){
         defaultValue: null,
         "primaryKey": false
       },
-      "pid": {
+      "label_id": {
         "type": "BIGINT(20) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true
       },
       "name": {
-        "type": "VARCHAR(64)",
+        "type": "VARCHAR(128)",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
-      "access_token": {
-        "type": "VARCHAR(256)",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "access_token_long": {
-        "type": "VARCHAR(256)",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "access_token_messenger": {
-        "type": "VARCHAR(256)",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "expires_in": {
-        "type": "INT(11)",
-        "allowNull": true,
+      "pid": {
+        "type": "BIGINT(20) UNSIGNED",
+        "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       }
     },{
-        tableName:'fb_page',
+        tableName:'fb_label',
         timestamps:false,
         createdAt:false,
         updatedAt:false,

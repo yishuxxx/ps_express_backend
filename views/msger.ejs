@@ -5,7 +5,7 @@
     <title>Avalon Messenger</title>
     <!--link rel="stylesheet" href="/css/chat.css"-->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/latest/css/bootstrap.min.css"/>
-    <link rel="stylesheet" href="/css/react-datetime.css"/>
+    <link rel="stylesheet" href="<%= base_dir %>/css/react-datetime.css"/>
     <link rel="stylesheet" href="https://unpkg.com/react-select/dist/react-select.css">
 
     <style>
@@ -64,6 +64,10 @@
 
       .MessageManager .image_url{}
       .MessageManager .image_url>.preview_image{width:100%;}
+      .MessageManager audio,video{max-width:300px;}
+
+      .MessageManager .ConversationOptions .MessageLoaderButtons{float:left;width:85px;}
+      .MessageManager .ConversationOptions .LabelSelector{float:right;width:calc(100% - 85px);}
 
       .bulk_message_queue_counter{}
     </style>

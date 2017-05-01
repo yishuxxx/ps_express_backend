@@ -13,11 +13,12 @@ import ReactSelect from 'react-select';
 import {randomString} from './Utils/Helper';
 
 const initial_state = Immutable({
+  connection:'',
   ConvManagers:[{
     filter:{
-      pid     : 1769068019987617,
+      pid     : 2769068019987617,//1769068019987617
       before  : moment().format('YYYY-MM-DD HH:mm:ss'),
-      limit   : 25,
+      limit   : 100,
       replied_by    : [],
       last_reply_by : '',
       id_products_asked   : [],      
@@ -29,7 +30,7 @@ const initial_state = Immutable({
     filter:{
       pid     : 1661200044095778,
       before  : moment().format('YYYY-MM-DD HH:mm:ss'),
-      limit   : 25,
+      limit   : 100,
       replied_by    : [],
       last_reply_by : '',
       id_products_asked   : [],      
@@ -57,43 +58,120 @@ var arrayToKey = function(arr,id_name){
 }
 */
 var reducer = function(state=Immutable([]),action=null){
-  console.log(action);
+
   switch(action.type){
+    case 'CONNECTION':
+      state = Immutable.setIn(state,['connection_status'], action.connection_status);
+      break;
+    case 'GET_LABELS_RESPONSE_SUCCESS':
+      state = Immutable.setIn(state, ["ConvManagers", parseInt(action.list_i,10), "FBLabels"], action.FBLabels);
+      break;
+    case 'UPDATE_CONVERSATION':
+    /*
+      var Conversations = state.Conversations;
+      var ConvManagers = state.ConvManagers;
+      var ConversationLoaded = action.Conversation;
+      var t_mid = action.Conversation.t_mid;
+      var index = Conversations.findIndex((x,i)=>(x.t_mid === t_mid));
+
+      ConversationLoaded.messages = Conversations[index].messages;
+
+      state = Immutable.setIn(state, ["Conversations",index], ConversationLoaded);
+      ConvManagers.map((ConvManager,i)=>{
+        if(ConvManager.Conversations && ConvManager.Conversations.data.length >= 1){
+          var index = ConvManager.Conversations.data.findIndex((x,i)=>(x.t_mid === t_mid));
+          state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data',index], ConversationLoaded);
+        }
+      });
+      console.log(action);
+      break;
+      */
     case 'GET_CONVERSATIONS_RESPONSE_SUCCESS':
       var Conversations = ( state.Conversations && state.Conversations.length>=1 ? Immutable.asMutable(state.Conversations) : [] );
+      var Conversations2 = ( state.ConvManagers[parseInt(action.list_i,10)].Conversations && state.ConvManagers[parseInt(action.list_i,10)].Conversations.length>=1 ? Immutable.asMutable(state.ConvManagers[parseInt(action.list_i,10)].Conversations) : [] );
       var ConversationsLoaded = action.response.data;
 
       ConversationsLoaded.map((ConversationLoaded,i)=>{
         var index = Conversations.findIndex((x,i)=>(x.t_mid === ConversationLoaded.t_mid));
+        var index2 = Conversations2.findIndex((x,i)=>(x.t_mid === ConversationLoaded.t_mid));
         if(index === -1){
           Conversations.push(ConversationLoaded);
         }else{
           Conversations[index] = ConversationLoaded;
         }
+
+        if(index2 === -1){
+          Conversations2.push(ConversationLoaded);
+        }else{
+          Conversations2[index] = ConversationLoaded;
+        }
       });
+
       state = Immutable.setIn(state, ["Conversations"], Conversations);
       state = Immutable.setIn(state, ["ConvManagers", parseInt(action.list_i,10), "Conversations"], {
-        data:Conversations,
+        data:Conversations2,
         paging:action.response.paging,
         list_i:action.response.list_i
       });
       break;
     case 'GET_MESSAGES_RESPONSE_SUCCESS':
+      /*
       var Conversations = state.Conversations;
       var ConvManagers = state.ConvManagers;
       var MessagesLoaded = action.response.data;
       var t_mid = action.response.t_mid;
       var index = Conversations.findIndex((x,i)=>(x.t_mid === t_mid));
       var Messages = Immutable.asMutable(Conversations[index].messages.data);
-      var Messages = Messages.concat(MessagesLoaded);
+
+      Messages = mergeMessages(Messages,MessagesLoaded,false);
       state = Immutable.setIn(state, ["Conversations",index,'messages','data'], Messages);
-      
       ConvManagers.map((ConvManager,i)=>{
         if(ConvManager.Conversations && ConvManager.Conversations.data.length >= 1){
           var index = ConvManager.Conversations.data.findIndex((x,i)=>(x.t_mid === t_mid));
           state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data',index,'messages','data'], Messages);
         }
       });
+      break;
+      */
+    case 'NEW_MESSAGE':
+      console.log(action);
+      var Conversations = state.Conversations;
+      var ConvManagers = state.ConvManagers;
+      var t_mid = action.t_mid;
+      var index = Conversations.findIndex((x,i)=>(x.t_mid === t_mid));
+
+      var Messages = Immutable.asMutable(Conversations[index].messages.data);
+      console.log('Messages.length'+Messages.length);
+      if(action.Message){
+          Messages = mergeMessages(Messages,[action.Message],true);
+      }
+      if(action.Messages){
+          Messages = mergeMessages(Messages,action.Messages,false);
+      }
+      console.log('Messages.length'+Messages.length);
+      if(action.Conversation){
+        var ConversationChanged = action.Conversation;
+        ConversationChanged.messages = {data:Messages};
+      }else{
+        var ConversationChanged = Conversations[index];
+        ConversationChanged = Immutable.setIn(ConversationChanged,['messages','data'],Messages);
+      }
+
+      //ConversationChanged.messages = {data:Messages};
+      Conversations = mergeConversations(Conversations,[ConversationChanged],true);
+
+      //var Conversation = Immutable.merge(Conversations[index],action.Conversation);
+      state = Immutable.setIn(state, ["Conversations"], Conversations);
+
+      ConvManagers.map((ConvManager,i)=>{
+        if(ConvManager.Conversations && ConvManager.Conversations.data.length >= 1){
+          var Conversations2 = mergeConversations(ConvManager.Conversations.data,[ConversationChanged],true);
+          //var index = ConvManager.Conversations.data.findIndex((x,i)=>(x.t_mid === t_mid));
+          //state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data',index,'messages','data'], Messages);
+          state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data'], Conversations2);
+        }
+      });
+      
       break;
     default:
       break;
@@ -106,25 +184,30 @@ window.rstore = rstore;
 class MessageManager extends Component{
   constructor(props,context) {
     super(props,context);
-    this.state = {message_create:''};
+    //this.state = {message_create:''};
   }
 
   componentDidUpdate() {
     this.scrollToBottom();
   }
-
+  /*
   handleConversationMessageChange = (event) => {
     this.setState({message_create:event.target.value});
   }
-
+  */
   handleConversationMessageSubmit = (event) => {
     var t_mid = this.props.t_mid;
-    var message_create = this.state.message_create;
-    var sendMessage = sendMessage;
+    var pid = this.props.page_id;
+    var message = this.message_create.value;
 
-    sendMessage({t_mid:t_mid,text:message_create});
-    this.setState({message_create:''});
-    
+    sendMessage({
+        t_mid:t_mid,
+        pid:pid
+      },message
+    );
+    //this.setState({message_create:''});
+    this.message_create.value = '';
+
     /*
     rstore.dispatch({
       type:'MESSAGE_SEND',
@@ -141,9 +224,16 @@ class MessageManager extends Component{
     var Messages = this.props.Messages;
     var t_mid = this.props.t_mid;
     var before = Messages[Messages.length-1].created_time;
-    var limit = 25;
+    var limit = 100;
 
     getMessages(t_mid,before,limit);
+  }
+
+  handleUpdateConversationLabels = (all_selected_options) => {
+    var pid = this.props.page_id;
+    var t_mid = this.props.t_mid;
+    updateConversationLabels(pid,t_mid,all_selected_options);
+    console.log(all_selected_options);
   }
 
   scrollToBottom() {
@@ -156,14 +246,30 @@ class MessageManager extends Component{
   render(){
     var Messages = this.props.Messages;
     var page_id = this.props.page_id;
-    var message_create = this.state.message_create;
+    //var message_create = this.state.message_create;
     var message_count = this.props.message_count;
+    var FBLabels = this.props.FBLabels;
+    console.log(this.props.ConversationC.FBLabels.map((FBLabel,i)=>(FBLabel.label_id)).join(','));
 
     return(
       <section className="MessageManager">
-        <section className="load_more_messages">
-          <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(message_count-Messages.length)+' More'}</button>
+        <section className="ConversationOptions">
+          <div className="MessageLoaderButtons">
+            <div className="btn-group" role="group">
+              <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(message_count-Messages.length)}</button>
+              <button className="btn btn-sm btn-default" onClick={this.handleGetMessagesRefresh}><span className="glyphicon glyphicon-refresh"></span></button>
+            </div>
+          </div>
+          <div className="LabelSelector">
+            <ReactSelect 
+              value={this.props.ConversationC.FBLabels.map((FBLabel,i)=>(FBLabel.label_id)).join(',')}
+              options={FBLabels.map((FBLabel,i)=>({value:FBLabel.label_id+'',label:FBLabel.name}))}
+              onChange={this.handleUpdateConversationLabels}
+              multi={true}
+            />
+          </div>
         </section>
+        <div style={{clear:'both'}}></div>
         <section className="messages_list" ref={(div) => {this.messageList = div;}}>
           {Messages.map((x,index)=>{
             var Message = Messages[Messages.length - 1 - index];
@@ -171,28 +277,65 @@ class MessageManager extends Component{
             var message_left_right = (Message.from.id == page_id) ? "top" : "left";
 
             var message_or_attachment = [];
-            if(Message.attachments && Message.attachments.data && Message.attachments.data.length >= 1){
+            var attachments = Message.attachments;
+            if(attachments && attachments.data && attachments.data.length >= 1){
 
-              Message.attachments.data.map((attachment,i)=>{
+              attachments.data.map((attachment,i)=>{
 
+                // PHOTO
                 if(attachment.image_data){
                   if(typeof attachment.image_data === 'string'){
                     var image_data = JSON.parse(attachment.image_data);
                   }else{
                     var image_data = attachment.image_data;
                   }
-                  message_or_attachment.push( <a className="image_url" href={image_data.url} target="_blank">
+                  message_or_attachment.push( <a key={attachment.id} className="image_url" href={image_data.url} target="_blank">
                                                 <img className="preview_image" src={image_data.preview_url} />
                                               </a>);
+                // VIDEO
+                }else if(attachment.video_data){
+                  if(typeof attachment.video_data === 'string'){
+                    var video_data = JSON.parse(attachment.video_data);
+                  }else{
+                    var video_data = attachment.video_data;
+                  }
+                    message_or_attachment.push(
+                      <video  controls 
+                              key={attachment.id}
+                              className="video_playback" 
+                      >
+                        <source src={video_data.url} type={attachment.mime_type} />
+                      </video>);
+                // FILE OR AUDIO
                 }else if(attachment.file_url){
-                  message_or_attachment.push(<a className="file_url" href={attachment.file_url} target="_blank">{attachment.file_url}</a>);
+                  // AUDIO RECORDING
+                  if(attachment.mime_type === 'audio/mpeg'){
+                    message_or_attachment.push(
+                      <audio  controls 
+                              key={attachment.id}
+                              className="audio_playback" 
+                      >
+                        <source src={attachment.file_url} type={attachment.mime_type} />
+                      </audio>);
+                  // FILE DOWNLOAD
+                  }else{
+                    message_or_attachment.push(<a key={attachment.id} className="file_url" href={attachment.file_url} target="_blank">{attachment.name}</a>);
+                  }
+                // STICKERS
+                }else if(attachment.type === 'image'){
+                  var payload = JSON.parse(attachment.payload);
+                  message_or_attachment.push( <a key={attachment.id} className="image_url" href={payload.url} target="_blank">
+                                                <img className="preview_image" src={payload.url} />
+                                              </a>);  
+                // UNKNOWN
                 }else{
-                  message_or_attachment.push(<span>{'[ATTACHMENT='+attachment.attachment_id+']'}</span>);
+                  message_or_attachment.push(<span key={attachment.id}>{'[ATTACHMENT='+attachment.attachment_id+']'}</span>);
                 }
               });
+
             }else if(Message.message){
-              message_or_attachment =   Message.message.split('\n').map((item, key) => (
-                                          <span key={key}>{item}<br/></span>
+              message_or_attachment =   Message.message.split('\n').map((item, i) => (
+                                          <span key={Message.id+'_NL_'+i}>{item}<br/></span>
                                         ));
             }else{
               message_or_attachment = '[STICKER]';
@@ -225,8 +368,7 @@ class MessageManager extends Component{
             <textarea
               className="form-control"
               name="message_create" 
-              value={message_create}
-              onChange={this.handleConversationMessageChange}
+              ref={(message_create) => {this.message_create = message_create}} 
               style={{height:'35px'}}
             />
           </Col>
@@ -250,7 +392,10 @@ class ConvLoadFilter extends Component{
     this.state = {
       replied_by:[],
       last_replied_by:'',
-      products_asked:[]
+      products_asked:[
+              { value: 'USB_2IN1', label: 'USB_2IN1' },
+              { value: 'CAR_RECORDER_WD', label: 'CAR_RECORDER_WD' }
+            ]
     };
   }
 
@@ -259,10 +404,12 @@ class ConvLoadFilter extends Component{
   }
   
   handleSelectLastRepliedBy = (all_selected_options) =>{
+    console.log(all_selected_options);
     this.setState({last_replied_by:all_selected_options});
   }
 
   handleSelectProductsAsked = (all_selected_options) =>{
+    console.log(all_selected_options);
     this.setState({products_asked:all_selected_options});
   }
 
@@ -433,15 +580,6 @@ class ConversationCard extends Component{
             <div>
               <span className="conversation_header">
                 <span className="sender_name">{this.props.Conversation.name}</span>
-
-                <span className="label_box">
-                {/*this.props.Conversation.tags.data.length
-                  ? this.props.Conversation.tags.data.map((label,i)=>(
-                    <span key={this.props.Conversation.id+'L'+i} className="label label-default">{label.name}</span>
-                  ))
-                  : null
-                */}
-                </span>
               </span>
               <span className="updated_time">
                 {/*moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 
@@ -452,6 +590,14 @@ class ConversationCard extends Component{
               </span>
             </div>
 
+            <span className="label_box">
+            {this.props.Conversation.FBLabels && this.props.Conversation.FBLabels.length>=1
+              ? this.props.Conversation.FBLabels.map((FBlabel,i)=>(
+                <span key={this.props.Conversation.id+'L'+i} className="label label-default">{FBlabel.name}</span>
+              ))
+              : null
+            }
+            </span>
             <span className="message" onClick={this.handleShowMoreMessages}>
               {
                 this.state.show_more_messages 
@@ -651,6 +797,8 @@ class ConversationManager extends Component{
                   page_id={this.props.ConvManager.filter.pid}
                   t_mid={this.state.t_mid_selected}
                   message_count={ConversationC.message_count}
+                  FBLabels={this.props.ConvManager.FBLabels}
+                  ConversationC={ConversationC}
                 />
               : null
             }
@@ -667,6 +815,17 @@ class MessengerApp extends Component{
   render(){
     return(
       <section className="MessengerApp">
+
+        <div 
+          className={
+            this.props.state.connection_status === 'DISCONNECTED' 
+              ? 'alert alert-danger' 
+              : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'alert alert-warning' : '')}
+        >
+          {this.props.state.connection_status === 'DISCONNECTED' 
+            ? 'OFFLINE' 
+            : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
+        </div>
 
         <Row>
           <Col md={6}>
@@ -704,8 +863,16 @@ var rerender = function(){
 window.rerender  = rerender;
 rerender();
 
-var socket = io();
+//var socket = io('localhost:3000', {path: '/socket.io'});
+//var socket = io();
+
+var socket = io({transports: ['polling'], upgrade: false, path: '/api1/socket.io'});
 var connected = true;
+
+socket.on('log', function (data) {
+  console.log('================= LOG ================')
+  console.log(data);
+});
 
 // Whenever the server emits 'login', log the login message
 socket.on('login', function (data) {
@@ -719,6 +886,26 @@ socket.on('login', function (data) {
   console.log(message);
 });
 
+
+socket.on('GET_LABELS', function (response) {
+  rstore.dispatch({
+    type:'GET_LABELS_RESPONSE_SUCCESS',
+    FBLabels:response.data,
+    list_i:response.list_i
+  });
+  rerender();
+});
+
+socket.on('UPDATE_CONVERSATION', function (data) {
+  console.log(data);
+  rstore.dispatch({
+    type:'NEW_MESSAGE',
+    t_mid:data.Conversation.t_mid,
+    Conversation:data.Conversation
+  });
+  rerender();
+});
+
 socket.on('GET_CONVERSATIONS', function (response) {
   console.log(response);
   rstore.dispatch({
@@ -729,20 +916,28 @@ socket.on('GET_CONVERSATIONS', function (response) {
   rerender();
 });
 
-socket.on('GET_MESSAGES', function (response) {
-  console.log(response);
+socket.on('GET_MESSAGES', function (data) {
+  console.log(data);
   rstore.dispatch({
-    type:'GET_MESSAGES_RESPONSE_SUCCESS',
-    response:response
+    type:'NEW_MESSAGE',
+    t_mid:data.Messages[0].t_mid,
+    Messages:data.Messages
   });
   rerender();
 });
 
 // Whenever the server emits 'new message', update the chat body
 socket.on('new message', function (data) {
-  console.log('new message');
   console.log(data);
   //addChatMessage(data);
+  rstore.dispatch({
+    type:'NEW_MESSAGE',
+    t_mid:data.Conversation.t_mid,
+    Conversation:data.Conversation,
+    Message:data.Message
+  });
+  rerender();
+
 });
 
 // Whenever the server emits 'user joined', log it in the chat body
@@ -775,6 +970,11 @@ socket.on('stop typing', function (data) {
 socket.on('disconnect', function () {
   console.log('you have been disconnected');
   //log('you have been disconnected');
+  rstore.dispatch({
+    type:'CONNECTION',
+    connection_status:'DISCONNECTED'
+  });
+  rerender();
 });
 
 socket.on('reconnect', function () {
@@ -783,11 +983,26 @@ socket.on('reconnect', function () {
   //if (username) {
   //  socket.emit('add user', username);
   //}
+  rstore.dispatch({
+    type:'CONNECTION',
+    connection_status:'CONNECTED'
+  });
+  rerender();
 });
 
 socket.on('reconnect_error', function () {
   console.log('attempt to reconnect has failed');
   //log('attempt to reconnect has failed');
+  rstore.dispatch({
+    type:'CONNECTION',
+    connection_status:'RECONNECT_ERROR'
+  });
+  rerender();
+});
+
+socket.on('ERROR', function (data) {
+  console.log('ERROR');
+  console.log(data);
 });
   
 
@@ -796,22 +1011,19 @@ function cleanInput(input) {
 }
 
 // Sends a chat message
-function sendMessage(message) {
+function sendMessage(conversation_info,message) {
   // Prevent markup from being injected into the message
   console.log('inside sendMessage');
-  message.text = cleanInput(message.text);
+  message = cleanInput(message);
   // if there is a non-empty message and a socket connection
-  if (message.text && connected) {
-    //$inputMessage.val('');
-    /*
-    rstore.dispatch({
-      message_create:''
-    });
-    */
-
-    addChatMessage(message);
+  if (message && connected) {
+    //addChatMessage(message);
     // tell server to execute 'new message' and send along one parameter
-    socket.emit('new message', message);
+    socket.emit('new message', { 
+      pid:conversation_info.pid,
+      t_mid:conversation_info.t_mid,
+      message:message
+    });
   }
 }
 
@@ -848,17 +1060,63 @@ function getConversations(list_i, more) {
       socket.emit('GET_CONVERSATIONS', {filter:rstore.getState().ConvManagers[list_i].Conversations.paging.next,list_i:list_i});
     }else{
       socket.emit('GET_CONVERSATIONS', {filter:rstore.getState().ConvManagers[list_i].filter,list_i:list_i});
+      socket.emit('GET_LABELS', {pid:rstore.getState().ConvManagers[list_i].filter.pid,list_i:list_i});
     }
   }
 }
 
 function getMessages(t_mid,before,limit) {
   if (connected) {
-    socket.emit('GET_MESSAGES',{  t_mid:t_mid,
-                                  before:before,
-                                  limit:limit
-                                });
+    socket.emit('GET_MESSAGES',{
+      t_mid:t_mid,
+      before:before,
+      limit:limit
+    });
   }
+}
+
+function updateConversationLabels(pid,t_mid,labels){
+  if(connected){
+    socket.emit('UPDATE_CONVERSATION_LABELS',{
+      pid:pid,
+      t_mid:t_mid,
+      labels:labels
+    })
+  }
+}
+
+function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
+  var Messages = MessagesOld.slice(0,MessagesOld.length);
+
+  MessagesLoaded.map((Message,i)=>{
+    var index = Messages.findIndex((x,i)=>(x.m_mid === Message.m_mid));
+    if(index === -1){
+      if(is_new === false){
+        Messages.push(Message);
+      }else{
+        Messages.unshift(Message);
+      }
+    }
+  });
+  return Messages;
+}
+
+function mergeConversations(ConversationsOld,ConversationsLoaded,is_new=true){
+  var Conversations = Immutable.asMutable(ConversationsOld);
+
+  ConversationsLoaded.map((Conversation,i)=>{
+    var index = Conversations.findIndex((x,i)=>(x.t_mid === Conversation.t_mid));
+    if(index === -1){
+      if(is_new === false){
+        Conversations.push(Conversation);
+      }else{
+        Conversations.unshift(Conversation);
+      }
+    }else{
+      Conversations[index] = Conversation;
+    }
+  });
+  return Conversations;
 }
 
 window.getConversations = getConversations;

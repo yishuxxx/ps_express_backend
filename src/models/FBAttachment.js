@@ -20,7 +20,7 @@ module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
         "primaryKey": false
       },
       "attachment_id": {
-        "type": "BIGINT(20) UNSIGNED",
+        "type": "VARCHAR(64)",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true
@@ -50,7 +50,7 @@ module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
         "primaryKey": false
       },
       "file_url": {
-        "type": "VARCHAR(128)",
+        "type": "TEXT",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
@@ -63,6 +63,24 @@ module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
       },
       "video_data": {
         "type": "TEXT",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "type": {
+        "type": "VARCHAR(16)",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "payload": {
+        "type": "TEXT",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "sticker_id": {
+        "type": "BIGINT(20) UNSIGNED",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false

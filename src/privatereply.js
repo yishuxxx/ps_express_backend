@@ -667,7 +667,7 @@ sy.hideComments = function(state,page_index,post_index){
   var page_access_token = state.Pages.data[page_index].access_token;
 
   Comments.map((Comment,i)=>{
-    if(Comment.is_hidden === false && Comment.can_hide === true){
+    if(Comment.is_hidden === false && Comment.can_hide === true && i>=5){
       FB.api(
         '/'+Comment.id+'?access_token='+page_access_token+'&is_hidden='+true,
         'POST',

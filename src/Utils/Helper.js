@@ -162,3 +162,10 @@ function randomString(length, chars) {
 }
 
 module.exports.randomString = randomString;
+
+function unique2DArray(array,fieldname){
+  var ids = array.map((x)=>(x[fieldname]));
+  return array.filter((x,i)=>(ids.indexOf(x[fieldname]) === i));
+}
+
+module.exports.unique2DArray = unique2DArray;

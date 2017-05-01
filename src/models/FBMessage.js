@@ -31,12 +31,6 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
         "defaultValue": null,
         "primaryKey": false
       },
-      "attachment_id": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
       "created_time": {
         "type": "DATETIME",
         "allowNull": false,
@@ -57,7 +51,7 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
       },
       "message": {
         "type": "TEXT",
-        "allowNull": false,
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
@@ -110,7 +104,35 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
         updatedAt:false,
         deletedAt:false,
         underscored:true,
-        scopes:{}
+        scopes:{
+            user:{
+                attributes:[
+                    'm_mid',
+                    't_mid',
+                    'created_time',
+                    'from',
+                    'to',
+                    'message',
+                    'delivered_timestamp',
+                    'delivered',
+                    'read_timestamp'
+                ]
+            }
+        },
+        getterMethods: {
+          from:  function() {
+            return {id:this.uid_from};
+          },
+          to:  function() {
+            return {id:this.uid_to};
+          },
+          attachments: function() {
+            if(this.FBAttachments && this.FBAttachments.length >= 1){
+              return {data:this.FBAttachments};
+            }
+            return null
+          }
+        }
     });
 
 }

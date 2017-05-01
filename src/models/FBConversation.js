@@ -92,7 +92,15 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         updatedAt:false,
         deletedAt:false,
         underscored:true,
-        scopes:{}
+        scopes:{},
+        getterMethods: {
+          messages: function() {
+            if(this.FBMessages && this.FBMessages.length >= 1){
+              return {data:this.FBMessages};
+            }
+            return null;
+          }
+        }
     });
 
 }
