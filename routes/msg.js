@@ -2,7 +2,7 @@ module.exports = function Msg(express, request, rq, crypto, settings, Sequelize,
 let router = express.Router();
 let moment = require('moment');
 let {randomString,unique2DArray} = require('../src/Utils/Helper');
-let {FBGraphAPIStandardError, FBGraphAPIError, SequelizeError} = require('../src/Utils/Error');
+let {FBGraphAPIStandardError, FBGraphAPIError, FBGraphAPINoResultError, SequelizeError, SequelizeNoResultError} = require('../src/Utils/Error');
 
 this.router = router;
 
@@ -79,10 +79,8 @@ io.on('connection', function(socket) {
 	console.log(socket.request.user);
 
 	socket.on('GET_LABELS', function(data) {
-		console.log('======================== socket.on(GET_LABELS) =========================');
+		console.log('======================== socket.on(GET_LABELS) START =========================');
 		var r = {pid:data.pid,list_i:data.list_i};
-
-		console.log('======================== FBLabels.findAll START =========================');
 
 		(()=>{
 			return FBLabel.findAll({
@@ -92,7 +90,7 @@ io.on('connection', function(socket) {
 		})()
 		.then(function(Instances){
 			if(Instances){
-				console.log('======================== socket.emit(GET_LABELS) =========================');
+				console.log('======================== socket.on(GET_LABELS) END =========================');
 				socket.emit('GET_LABELS', {
 					data:Instances,
 					list_i:r.list_i
@@ -113,40 +111,42 @@ io.on('connection', function(socket) {
 	});
 
 	socket.on('UPDATE_CONVERSATION_LABELS', function(data) {
-		console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) =========================');
+		console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) START =========================');
 
-		var pid = data.pid;
-		var t_mid = data.t_mid;
-		var labels = data.labels;
-		var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[pid];
-		var r = {};
+		var r = {
+			pid:data.pid,
+			t_mid:data.t_mid,
+			labels:data.labels
+		};
+		var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[r.pid];
 
-		console.log('======================== FBConversationLabel.findAll START =========================');
-		findOneConversation(t_mid)
+		findOneConversation(r.t_mid)
 		.then(function(Instance){
-			console.log('======================== FBConversationLabel.findAll END =========================');
-			r.FBConversation = Instance;
-			console.log('r.FBConversation.uid='+r.FBConversation.uid);
-			if(r.FBConversation && r.FBConversation.FBLabels && r.FBConversation.FBLabels.length >= 1){
-				r.FBConversationLabels = r.FBConversation.FBLabels;
-				var promises = [];
-				r.FBConversationLabels.map((ConversationLabel,i)=>{
-					var index = labels.findIndex((x,i)=>(parseInt(x.value,10) === parseInt(ConversationLabel.label_id,10)));
-					if(index === -1){
-						promises.push(
-							destroyConversationLabel(t_mid,ConversationLabel.label_id)
-						);
-						promises.push(
-							deletePageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,ConversationLabel.label_id)
-						);
-					}
-				});
-				return Sequelize.Promise.all(promises);
+			if(Instance){
+				r.FBConversation = Instance;
+				if(r.FBConversation.FBLabels && r.FBConversation.FBLabels.length >= 1){
+					r.FBConversationLabels = r.FBConversation.FBLabels;
+					var promises = [];
+					r.FBConversationLabels.map((ConversationLabel,i)=>{
+						var index = r.labels.findIndex((x,i)=>(parseInt(x.value,10) === parseInt(ConversationLabel.label_id,10)));
+						if(index === -1){
+							promises.push(
+								destroyConversationLabel(r.t_mid,ConversationLabel.label_id)
+							);
+							promises.push(
+								deletePageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,ConversationLabel.label_id)
+							);
+						}
+					});
+					return Sequelize.Promise.all(promises);					
+				}
+			}else{
+				winston.error('SequelizeNoResultError',{f:'findOneConversation',t_mid:r.t_mid});
+				throw new SequelizeNoResultError('findOneConversation');
 			}
 		}).then(function(promise_all_result){
-			console.log('r.FBConversation.uid='+r.FBConversation.uid);
 			var promises = [];
-			labels.map((label,i)=>{
+			r.labels.map((label,i)=>{
 				if(r.FBConversationLabels && r.FBConversationLabels.length >=1){
 					var index = r.FBConversationLabels.findIndex((x,i)=>(parseInt(x.label_id,10) === parseInt(label.value,10)));
 				}else{
@@ -155,25 +155,26 @@ io.on('connection', function(socket) {
 				if(index === -1){
 					promises.push(
 						FBConversationLabel.create({
-							t_mid_label_id:t_mid+'_'+label.value,
-							t_mid:t_mid,
+							t_mid_label_id:r.t_mid+'_'+label.value,
+							t_mid:r.t_mid,
 							label_id:label.value
 						}).then(sequelizeHandler)
 						.catch(sequelizeErrorHandler)
 					);
-					console.log('r.FBConversation.uid='+r.FBConversation.uid);
-					console.log('label.value='+label.value);
+
 					promises.push(postPageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,label.value));
 				}
 			});
 			return Sequelize.Promise.all(promises);
 
 		}).then(function(promise_all_result){
-			return findOneConversation(t_mid)
-		}).then(function(FBConversation){
+			return findOneConversation(r.t_mid);
+		}).then(function(Conversation){
 			io.local.emit('new message', {
-				Conversation:FBConversation
+				Conversation:Conversation,
+				pid:r.pid
 			});
+			console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) END =========================');
 		}).catch(function(err){
 			socket.emit('ERROR', {
 				error:err.name,
@@ -183,17 +184,16 @@ io.on('connection', function(socket) {
 		
 	});
 
-
 	socket.on('GET_CONVERSATIONS', function(data) {
-		console.log('======================== socket.on(GET_CONVERSATIONS) =========================');
+		console.log('======================== socket.on(GET_CONVERSATIONS) START =========================');
 
 		var pid = data.filter.pid;
 		var before = moment.utc(data.filter.before).format("YYYY-MM-DD HH:mm:ss");
 		var limit = data.filter.limit;
 		var list_i = data.list_i;
-		var r = {};
+		var r = {
 
-		console.log('======================== FBConversation.findAll START =========================');
+		};
 		
 		(()=>{
 			return FBConversation.findAll({
@@ -205,27 +205,29 @@ io.on('connection', function(socket) {
 					model:FBLabel
 				},{
 					model:FBMessage,
+					//order:[['created_time','DESC']],
 					include:[{
 						model:FBAttachment
 					}]
 				}],
-				order:[['updated_time','DESC']],
+				order:[
+					['updated_time','DESC'],
+					[FBMessage, 'created_time','DESC']
+				],
 				limit:limit
 			}).then(sequelizeHandler)
 			.catch(sequelizeErrorHandler);		  
 		})()
-		.then(function(FBConversations){
-			console.log('======================== FBConversation.findAll END =========================');
-			r.FBConversations = FBConversations;
-
-			if(r.FBConversations && r.FBConversations.length>=1){
+		.then(function(Instances){
+			if(Instances){
+				r.FBConversations = Instances;
 				r.FBConversations.map((FBConversation,i)=>{
 					r.FBConversations[i] = r.FBConversations[i].get({plain:true});
-					r.FBConversations[i].FBMessages = null;
-					//r.FBConversations[i].setDataValue('FBMessages',FBConversation.FBMessages.slice(0,25));					
-					r.FBConversations[i].messages = {data:r.FBConversations[i].messages.data.slice(0,25)};
+					if(r.FBConversations[i].messages){
+						r.FBConversations[i].FBMessages = null;
+						r.FBConversations[i].messages = {data:r.FBConversations[i].messages.data.slice(0,25)};
+					}
 				});
-				console.log('======================== socket.emit(GET_CONVERSATIONS) =========================');
 				socket.emit('GET_CONVERSATIONS', {
 					data:r.FBConversations,
 					paging:{next:{
@@ -235,69 +237,92 @@ io.on('connection', function(socket) {
 					}},
 					list_i:list_i
 				});
+				console.log('======================== socket.on(GET_CONVERSATIONS) END =========================');				
+			}else{
+				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:pid});				
+				throw new SequelizeNoResultError('FBConversation.findAll');
 			}
 		}).catch(function(err){
 			socket.emit('ERROR', {
 				error:err.name,
 				message:err.message,
 			});
+			winston.error('SequelizeNoResultError',{error:err});				
+			throw err;
 		});
-		
 	});
 
 	socket.on('GET_MESSAGES',function(data){
-		console.log('======================== socket.on(GET_MESSAGES) START =========================');
-		//console.log(data);
-		var r = data
+		console.log('======================== socket.on(GET_MESSAGES) =========================');		
+		var q = {
+			pid:data.pid,
+			t_mid:data.t_mid,
+			latest_only:data.latest_only
+		}
+		var r = {};
 
-		//console.log('======================== FBMessage.findAll START =========================');
-		
-		findAllMessages(r.t_mid,{limit:r.limit,before:r.before})
-		.then(function(FBMessages){
-			//console.log('======================== FBMessage.findAll END =========================');
-			//console.log('type='+typeof FBMessages);
+		function getAndUpsertMessages(PAGE_ACCESS_TOKEN,pid,t_mid,options={}){
+			var total_count = typeof options.total_count !== undefined  ? options.total_count : null;
+			var limit = typeof options.limit !== undefined ? options.limit : 100;
 
-			if(FBMessages && FBMessages.length>= 1){
-				console.log('length='+FBMessages.length);
-
-				r.FBMessages = FBMessages;
-				return FBMessages;
-
-			}else{
-				//console.log('======================== FBConversation.findOne+FBMessage.count START =========================');
-				return Sequelize.Promise.all([
-					FBConversation.findOne({
-						where:{t_mid:r.t_mid}
-					}),
-					FBMessage.count({
-						where:{t_mid:r.t_mid}
-					})
-				]).spread(function(Instance,message_count){
-					//console.log('======================== FBConversation.findOne+FBMessage.count END =========================');
-					if(Instance && message_count && Instance.message_count > message_count){
-						return getMessages(Instance.pid,PAGE_ACCESS_TOKEN_LONG[Instance.pid],r.t_mid,100,null,(x,i)=>(false));
+			var r = {};
+			return Sequelize.Promise.all([
+				getMessages(q.pid,PAGE_ACCESS_TOKEN,t_mid,{limit:limit,total_count:total_count,matchFunc:((x,i)=>(false))}),
+				findAllMessages(t_mid)
+			]).spread(function(Messages,Instances){
+				if(Messages && Messages.length>=1){
+					r.Messages = Messages;
+					if(Instances && Instances.length >= 1){
+						r.FBMessages = Instances;
+					}else{
+						r.FBMessages = [];
 					}
-				}).then(function(Messages){
-					//console.log(Messages);
-					if(Messages && Messages.length>=1){
-						return upsertMessages(r.t_mid,Messages);
-					}
-				}).then(function(Messages){
-					//console.log('======================== findAllMessages START =========================');
-					if(Messages){
-						//console.log(Messages.length);
-						return findAllMessages(r.t_mid,{limit:null});
-					}
-				});
-			}
-		}).then(function(FBMessages){
-			//console.log('======================== findAllMessages END =========================');
+					var MessagesNew = [];
+					r.Messages.map((Message,i)=>{
+						var index = r.FBMessages.findIndex((x,i)=>(x.m_mid === Message.id));
+						if(index === -1){
+							MessagesNew.push(Message);
+						}else{
+							//DO NOTHING
+						}
+					});
+					return upsertMessages(t_mid,MessagesNew);
+				}else{
+					winston.error('FBGraphAPINoResultError',{f:'getMessages',t_mid:t_mid});
+					throw new FBGraphAPINoResultError('getMessages');
+				}
+			}).then(function(success){
+				return findAllMessages(t_mid,{limit:total_count});
+			}).then(function(Instances){
+				if(Instances && Instances.length>=1){
+					r.FBMessages = Instances;
+					return r;
+				}else{
+					winston.error('SequelizeNoResultError',{f:'findAllMessages',t_mid:t_mid});
+					throw new SequelizeNoResultError('findAllMessages');
+				}
+			});
+		}
 
-			if(FBMessages){
-				console.log(FBMessages.length);
+		console.log('======================== 1 new Sequelize.Promise =========================');				
+		new Sequelize.Promise(function(resolve, reject) {
+			console.log('======================== 2.B getAndUpsertMessages =========================');				
+			getAndUpsertMessages(PAGE_ACCESS_TOKEN_LONG[q.pid],q.pid,q.t_mid,{total_count:(q.latest_only ? 99 : null) })
+			.then(function(result){
+				if(result && result.FBMessages && result.FBMessages.length>=1){
+					console.log('======================== 2.B2* resolve =========================');				
+					resolve(result);
+				}else{
+					reject();
+				}
+			});
+		}).then(function(result){
+			if(result && result.FBMessages && result.FBMessages.length>=1){
+				console.log('======================== 3 socket.emit(GET_MESSAGES) =========================');
+				r.FBMessages = result.FBMessages;
 				socket.emit('GET_MESSAGES', {
-					Messages:FBMessages,
-					paging:{next:{}}
+					Messages:r.FBMessages,
+					pid:q.pid
 				});
 			}else{
 				socket.emit('ERROR', {
@@ -305,7 +330,6 @@ io.on('connection', function(socket) {
 					message:'No more messages to retreieve'
 				});
 			}
-			console.log('======================== socket.on(GET_MESSAGES) END =========================');
 		}).catch(function(err){
 			socket.emit('ERROR', {
 				error:err.name,
@@ -315,52 +339,141 @@ io.on('connection', function(socket) {
 
 	});
 
+	socket.on('REFRESH_CONVERSATIONS', function(data){
+		console.log('======================== socket.on(REFRESH_CONVERSATIONS) START =========================');
+
+		var q = {pid:data.pid};
+		var p = [];
+		var r = {};
+		/*
+		p[0] = sequelize.query(
+			`SELECT 
+				COUNT(fb_message.id) as message_count_db,
+				fb_conversation.t_mid as t_mid,
+				fb_conversation.updated_time as updated_time
+			FROM fb_conversation 
+			JOIN fb_message ON fb_message.t_mid=fb_conversation.t_mid
+			WHERE pid=:pid 
+			GROUP BY fb_conversation.id
+			ORDER BY fb_conversation.updated_time DESC
+			LIMIT 100`,
+		  { replacements: { pid: pid }, type: sequelize.QueryTypes.SELECT }
+		);*/
+		p[0] = FBConversation.findAll({
+			where:{pid:q.pid},
+			order:[['updated_time','DESC']],
+			limit:100
+		});
+
+		p[1] = getConversations(q.pid,{limit:100,fields:'message_count,link,id,senders,snippet,unread_count,updated_time,messages.limit(1){id,from,message,created_time,attachments.limit(100){id,image_data,mime_type,name,size,video_data,file_url},to}'});
+		
+		Sequelize.Promise.all(p)
+		.spread(function(Instances,conversations){
+			var Conversations = conversations.data;
+			var FBConversations = Instances;
+			var ConversationsToUpdate = [];
+			var p = [];
+
+			Conversations.map((Conversation,i)=>{
+				var FBConversation = FBConversations.find((x,i)=>(x.t_mid === Conversation.id));
+
+				//console.log(moment(Conversation.updated_time).format('YYYY-MM-DD HH:mm:ss')+'  -  '+moment(FBConversation.updated_time).format('YYYY-MM-DD HH:mm:ss'));
+				//console.log(time_diff);
+				if(FBConversation){
+					var time_diff = moment(Conversation.updated_time).diff(moment(FBConversation.updated_time));
+					if(time_diff > 0){
+						Conversation.t_mid = Conversation.id;
+						ConversationsToUpdate.push(Conversation);
+					}else if(time_diff === 0){
+						//DO NOTHING
+					}else{
+						winston.error('REFRESH_CONVERSATIONS, time_diff is negative');
+						throw new Error('REFRESH_CONVERSATIONS, time_diff is negative');
+					}
+				}else if(typeof FBConversation === 'undefined'){
+					Conversation.t_mid = Conversation.id;
+					ConversationsToUpdate.push(Conversation);
+				}else{
+					winston.error('REFRESH_CONVERSATIONS');
+					throw new Error('REFRESH_CONVERSATIONS');
+				}
+			});
+
+			ConversationsToUpdate.map((Conversation,i)=>{
+				p.push(upsertConversation(Conversation));
+			});
+			r.Conversations = ConversationsToUpdate;
+
+			return Sequelize.Promise.all(p);
+		}).then(function(unknown){
+			socket.emit('REFRESH_CONVERSATIONS',{
+				pid:q.pid,
+				Conversations:r.Conversations
+			});
+		});
+
+	});
+
 	let addedUser = false;
 	// when the client emits 'new message', this listens and executes
 	socket.on('new message', function(data) {
-		// we tell the client to execute 'new message'
-		console.log('new message');
-		console.log(data);
+		console.log('======================== socket.on(new message) START =========================');
 
-		console.log('======================== FIND FB_CONVERSATION START =========================');
-		FBConversation.findOne({
-			where: {t_mid: data.t_mid},
-		}).then(function(Instance) {
-			let FBConversation = Instance;
-			if(FBConversation) {
-				psid = FBConversation.psid ? FBConversation.psid : null;
-				if(psid) {
-					return psid;
-				}
+		var r = data;
+		(()=>{
+			return FBConversation.findOne({
+				where: {t_mid: r.t_mid},
+			}).then(sequelizeHandler)
+			.catch(sequelizeErrorHandler);		
+		})()
+		.then(function(Instance) {
+			if(Instance) {
+				r.FBConversation = Instance;
+				r.psid = r.FBConversation.psid ? r.FBConversation.psid : null;
 			}
-		}).then(function(psid) {
-			console.log('======================== FIND FB_CONVERSATION END =========================');
-			console.log(psid);
 
-			let messageData = {
-				recipient: {
-					id: psid,
-				},
-				message: {
-					text: data.message,
-					metadata: 'DEVELOPER_DEFINED_METADATA',
-				},
-			};
+			var message_data;
+			switch(r.type){
+				case 'text':
+					message_data = {
+						recipient: {
+							id: r.psid,
+						},
+						message: {
+							text: r.message,
+							metadata: 'DEVELOPER_DEFINED_METADATA',
+						},
+					};
+					break;
+				case 'read receipt':
+					message_data = sendReadReceipt(r.psid);
+					break;
+				default:
+					break;
+			}
 
-			callSendAPI(messageData,{
-				pid:data.pid,
-				t_mid:data.t_mid,
-				psid:(psid ? psid : null)
-			}).then(function(r){
-				console.log('======================== BROADCAST START =========================');
-				io.local.emit('new message', {
-					username: socket.username,
-					Message:r.FBMessage,
-					Conversation:r.FBConversation
-				});
-				console.log('======================== BROADCAST END =========================');
+			return callSendAPI(message_data,r.type,{
+				pid:r.pid,
+				t_mid:r.t_mid,
+				psid:(r.psid ? r.psid : null)});
+
+		}).then(function(r2){
+			io.local.emit('new message', {
+				username: socket.username,
+				Message:r2.FBMessage,
+				Conversation:r2.FBConversation,
+				pid:r.pid
 			});
-		});
+			console.log('======================== socket.on(new message) END =========================');
+		}).catch(function(err){
+			if(err instanceof Error){
+				io.local.emit('ERROR',{
+					error:err.name,
+					message:err.message
+				});
+			}
+			throw err;
+		})
 	});
 
 	// when the client emits 'add user', this listens and executes
@@ -506,13 +619,14 @@ function nextFBRequest(resolve, reject, queryParams, r, breakCondition) {
 			}
 		}
 
-		return rq({
+		return (()=>(
+		rq({
 			uri: uri,
 			qs: qs,
 			method: 'GET',
-		}).then(function(res) {
-			response = JSON.parse(res);
-
+			json:true
+		}).then(facebookGraphAPIHandler).catch(facebookGraphAPIErrorHandler)))()
+		.then(function(response) {
 			if(response.data && response.data.length>=1) {
 				r.data = r.data.concat(response.data);
 				r.paging = response.paging;
@@ -522,14 +636,9 @@ function nextFBRequest(resolve, reject, queryParams, r, breakCondition) {
 				r.data = r.data;
 				r.paging = response.paging;
 				r.continue = false;
-			}else if(response.error) {
-				throw new Error(response.error.message);
-			}else{
-				console.log(response);
-				throw new Error('Unexpected Facebook response');
 			}
 			return r;
-		}).catch(function(err) {
+		}).catch(function(err){
 			throw err;
 		});
 	}
@@ -540,7 +649,7 @@ function nextFBRequest(resolve, reject, queryParams, r, breakCondition) {
 					resolve(r);
 			} else {
 					console.log('r.data.length ============ '+r.data.length);
-					console.log(r.paging);
+					console.log(r.paging.next ? 'next_page=yes' : 'next_page=no');
 					nextFBRequest(resolve, reject, queryParams, r, breakCondition);
 			}
 	}, reject);
@@ -610,16 +719,19 @@ router.get('/countcomments', function(req, res) {
 });
 
 
-function getConversations(pid,last_message_date_input,limit){
+function getConversations(pid,options={}){
 	let PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[pid];
-	let last_message_date = last_message_date_input ? moment(last_message_date_input) : moment();
+	let last_message_date = options.last_message_date_input ? moment(options.last_message_date_input) : moment();
+	let limit = options.limit !== undefined ? options.limit : 100;
+	let fields = options.fields !== undefined ? options.fields : 'link,id,message_count,snippet,updated_time,unread_count,senders,messages{message,id,created_time,from,to,attachments}';
+
 	let result = {};
 
 	return new Sequelize.Promise(function(resolve, reject) {
 		let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
 		let qs = {
 			access_token: PAGE_ACCESS_TOKEN,
-			fields: 'link,id,message_count,snippet,updated_time,unread_count,senders,messages{message,id,created_time,from,to,attachments}',
+			fields: fields,
 			limit: limit,
 		};
 
@@ -741,23 +853,64 @@ router.get('/getconv', function(req, res) {
 	});
 });
 
-router.get('/messages',function(req,res){
+router.get('/getconv2', function(req, res) {
+	let pid = req.query.pid;
+	let PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[pid];
+	let last_message_date = moment(req.query.last_message_date);
+	let result = {};
 
-	FBMessage.findAll({
-		where:{t_mid:'t_mid.1442286828612:0a18275c12a2dfe520'},
-	include:[{
-		model:FBAttachment,
-	}],
-		order:[['created_time','DESC']]
-	}).then(function(FBMessages){
-		FBMessages.map((FBMessage,i)=>{
-			if(FBMessage.FBAttachments && FBMessage.FBAttachments.length >=1){
-				FBMessage.setDataValue('attachments',{data:FBMessage.FBAttachments});
-			}
+	var count_conv = 0;
+	var count_msg = 0;
+
+	new Sequelize.Promise(function(resolve, reject) {
+			let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
+			let qs = {
+				access_token: PAGE_ACCESS_TOKEN,
+				fields: 'link,id,message_count,snippet,updated_time,unread_count,senders',
+				limit: 100,
+			};
+
+			// start first iteration of the loop
+			nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
+				let list = response.data;
+				list.map((item, i)=>{
+					let tmp = last_message_date.diff(moment(item.updated_time), 'seconds');
+					i === 0 ? console.log(item.updated_time+'___'+tmp + '___' + (tmp >= 0)) : null;
+					if(last_message_date.diff(moment(item.updated_time), 'seconds') >= 0) {
+						r.continue = false;
+					}
+				});
+				result = r;
+				return r;
+			});
+	}).then(function(r) {
+
+		return Sequelize.Promise.mapSeries(r.data,function(Conversation){
+				return FBConversation.upsert({
+						pid: Conversation.senders.data[1].id,
+						uid: Conversation.senders.data[0].id,
+						pid_uid: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
+						t_mid: Conversation.id,
+						psid: null,
+						updated_time: Conversation.updated_time,
+						link: Conversation.link,
+						name: Conversation.senders.data[0].name,
+						snippet:	Conversation.snippet,
+						message_count: Conversation.message_count,
+						unread_count: Conversation.unread_count,
+					}, {
+						where: {
+							t_mid: Conversation.id,
+						},
+					}
+				)
 		});
-		res.send(FBMessages);
+	}).then(function(Instances){
+		res.send({success: true});
+	}).catch(function(err){
+		console.log(err);
+		res.send({success: false, message:err});
 	});
-
 });
 
 router.get('/labels',function(req,res){
@@ -843,30 +996,6 @@ router.get('/labels',function(req,res){
 	});
 });
 
-router.get('/postlabel',function(req,res){
-	var pid = req.query.pid;
-	var uid = req.query.uid;
-	var label_id = req.query.label_id;
-	var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[pid];
-	var r = {};
-
-	postPageLabel(PAGE_ACCESS_TOKEN,uid,label_id)
-	.then(function(response){
-		res.send({response:response});
-	}).catch(function(err){
-		if(err instanceof Error){
-			res.send({success:false,error:err.name,message:err.message});
-		}
-	});
-
-});
-
-router.get('/seqerror',function(req,res){
-	findAllMessages(req.query.t_mid)
-	.then(function(Instances){
-		res.send({data:Instances});
-	});
-});
 
 // MESSENGER SAMPLE FUNCTIONS
 
@@ -883,7 +1012,7 @@ router.get('/webhook', function(req, res) {
 
 router.post('/webhook', function(req, res) {
 	let data = req.body;
-	console.log(data);
+	console.log(JSON.stringify(data));
 
 	// Make sure this is a page subscription
 	if (data.object == 'page') {
@@ -910,6 +1039,15 @@ router.post('/webhook', function(req, res) {
 						receivedAccountLink(messagingEvent);
 					} else {
 						console.log('Webhook received unknown messagingEvent: ', messagingEvent);
+					}
+				});
+			}else if(pageEntry.changes && pageEntry.changes instanceof Array){
+				pageEntry.changes.map((change,i)=>{
+					if(change.field === 'conversations'){
+						graphAPIConversationEvent(change);
+					}else{
+						console.log('\x1b[36m%s\x1b[0m', 'this is not a graph API conversation event');
+						console.log('\x1b[36m%s\x1b[0m', change);
 					}
 				});
 			}else{
@@ -949,6 +1087,36 @@ router.get('/authorize', function(req, res) {
 	});
 });
 
+router.post('/pm', function(req, res) {
+	res.send({success:true});
+	/*	
+	var pid = req.query.pid;
+	var t_mid = req.query.t_mid;
+	var m_mid = req.query.m_mid;
+	var comment_id = req.query.comment_id;
+	var r = {};
+	
+	if(!(pid && t_mid && m_mid && comment_id)){
+		res.send({success:false});
+		winston.error('RequestQueryParametersInvalidError',{route:'/pm',t_mid:t_mid,m_mid:m_mid,comment_id:comment_id});
+		throw new RequestQueryParametersInvalidError('router.post(/pm)');
+	}
+	console.log('======================== PRIVATE REPLY =========================');
+	getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN_LONG[pid],t_mid,m_mid,null,null)
+	.then(function(result){
+		if(result.FBConversation){
+			r.FBConversation = result.FBConversation;
+		}
+		if(result.FBMessage){
+			r.FBMessage = result.FBMessage;
+		}
+		res.send({success:true});
+		io.local.emit('new message', {Conversation:r.FBConversation,Message:r.FBMessage,pid:pid});
+	}).catch(function(err){
+		throw err;
+	})
+	*/
+});
 
 /*
  * Verify that the callback came from Facebook. Using the App Secret from
@@ -1009,6 +1177,75 @@ function receivedAuthentication(event) {
 	sendTextMessage(senderID, 'Authentication successful');
 }
 
+function graphAPIConversationEvent(change){
+	var q = {
+		pid:change.value.page_id,
+		t_mid:change.value.thread_id
+	};
+	var r ={};
+	var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[q.pid];
+
+	Sequelize.Promise.all([
+		getConversation(PAGE_ACCESS_TOKEN,q.t_mid),
+		getMessages(q.pid,PAGE_ACCESS_TOKEN,q.t_mid,{limit:5,total_count:1,matchFunc:((x,i)=>(false))}),
+		findAllMessages(q.t_mid,{limit:5})
+	]).spread(function(Conversation,Messages,Instances){
+		if(Conversation && Messages){
+			r.Conversation = Conversation;
+			r.Messages = Messages;
+			if(Instances){
+				r.FBMessages = Instances;
+			}else{
+				r.FBMessages = [];
+			}
+			console.log('############# MESSAGE #############');
+			console.log('name='+r.Conversation.senders.data[0].name);
+			console.log('message='+(r.Messages[0].message ? r.Messages[0].message : 'ATTACHMENT'));
+			console.log('________________________________________');
+
+			function filterNewMessages(Messages,FBMessages){
+				var MessagesNew = [];
+				Messages.map((Message,i)=>{
+					var index = FBMessages.findIndex((x,i)=>(x.m_mid === Message.id));
+					if(index === -1){
+						MessagesNew.push(Message);
+					}else{
+						//DO NOTHING
+					}
+				});
+				return MessagesNew;
+			}
+
+			var MessagesNew = filterNewMessages(r.Messages,r.FBMessages);
+
+			return Sequelize.Promise.all([
+				upsertConversation(r.Conversation),
+				upsertMessages(q.t_mid,MessagesNew)
+			]);
+		}else{
+			winston.error('FBGraphAPINoResultError',{f:'getConversation || getMessages',pid:q.pid,t_mid:q.t_mid});
+			throw new FBGraphAPINoResultError('getConversation || getMessages');
+		}
+	}).spread(function(unknown,unknown){
+		return Sequelize.Promise.all([
+			findOneConversation(q.t_mid),
+			findAllMessages(q.t_mid,{limit:5})
+		]);
+	}).spread(function(fbconversation,fbmessages){
+		if(fbconversation && fbmessages){
+			io.local.emit('new message',{
+				pid:q.pid,
+				Conversation:fbconversation,
+				Messages:fbmessages
+			});
+		}else{
+			winston.error('SequelizeNoResultError',{f:'findOneConversation || findAllMessages',t_mid:q.t_mid});
+			throw new SequelizeNoResultError('findOneConversation || findAllMessages');
+		}
+	});
+
+}
+
 // INSERT into fb_message and then do the default messenger sample action - echo
 function receivedMessage(event) {
 	let senderID = event.sender.id;
@@ -1016,9 +1253,7 @@ function receivedMessage(event) {
 	let timeOfMessage = event.timestamp;
 	let message = event.message;
 
-	console.log('========================RECEIVE MSG=========================');
-	console.log('Received message for user %s and page %s at %s with message:',
-		senderID, recipientID, timeOfMessage);
+	console.log('======================== RECEIVE MSG =========================');
 	console.log(JSON.stringify(event));
 
 	let isEcho = message.is_echo;
@@ -1031,254 +1266,36 @@ function receivedMessage(event) {
 	let messageAttachments = message.attachments;
 	let quickReply = message.quick_reply;
 	
-	var r = {pid:event.recipient.id,psid:event.sender.id,m_mid:'m_'+messageId};
-	rq({
-		uri: 'https://graph.facebook.com/v2.8/'+r.m_mid,
-		qs: {
-			access_token: PAGE_ACCESS_TOKEN_LONG[r.pid],
-			fields: 'attachments{mime_type,name,size,file_url,image_data,video_data,id},created_time,from,id,message,to'
-		},
-		method: 'GET',
-		json:true
-	}).then(function(response){
-		if(response.id && !response.error){
-			r.Message = response;
-			r.pid_uid = r.pid+'_'+r.Message.from.id;
-			console.log('======================== FBConversation.findOne START =========================');
-			return FBConversation.findOne({
-				where : {pid_uid:r.pid_uid}
-			});
-		}
-	}).then(function(Instance){
-		console.log('======================== FBConversation.findOne END =========================');				
-		if(Instance && Instance.t_mid){
-			r.FBConversation = Instance;
-			r.t_mid = r.FBConversation.t_mid;
-
-			console.log('======================== GET Conversation START =========================');	
-			return rq('https://graph.facebook.com/v2.8/'+r.t_mid,{
-				qs:{
-					access_token: PAGE_ACCESS_TOKEN_LONG[r.pid],
-					fields: 'id,snippet,updated_time,message_count,unread_count'
-				},
-				method:'GET',
-				json:true
-			}).then(function(response){
-				console.log('======================== GET Conversation END =========================');	
-				r.Conversation = response;
-
-				r.FBConversation.snippet = r.Conversation.snippet;
-				r.FBConversation.updated_time = r.Conversation.updated_time;
-				r.FBConversation.message_count = r.Conversation.message_count;
-				r.FBConversation.unread_count = r.Conversation.unread_count;
-
-				if(!r.FBConversation.psid){
-					console.log('======================== FBConversation.psid NULL =========================');		
-					r.FBConversation.setDataValue('psid',r.psid);
-					return r.FBConversation.save();
-				}else{
-					console.log('======================== FBConversation.psid OK =========================');	
-					return r.FBConversation;
-				}
-				return r.FBConversation.save();
-
-			});
-
+	var r = {
+		pid:event.recipient.id,
+		psid:event.sender.id,
+		m_mid:toMMID(messageId),
+		event:event,
+		message:message
+	};
+	console.log('======================== 1 getTMID =========================');
+	return getTMID(PAGE_ACCESS_TOKEN_LONG[r.pid],r.m_mid,r.psid,r.pid)
+	.then(function(t_mid){
+		if(t_mid){
+			r.t_mid = t_mid;
+			console.log('======================== 2 getAndUpsertMessageConversation =========================');
+			return getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,r.m_mid,event,event.sender.id);
 		}else{
-			console.log('======================== getconversations START =========================');
-			return getConversations(r.pid,null,25)
-			.then(function(response){
-				console.log('======================== getconversations END =========================');
-				if(response.data && response.data.length >=1){
-					r.Conversations = response;
-					let Conversations = response.data;
-					let index = Conversations.findIndex((Conversation,i)=>(
-						(Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id) === r.pid_uid
-					));
-					if(index !== -1){
-						var Conversation = Conversations[index];
-						console.log('======================== FBConversation.create (START)=========================');
-						return createConversation(Conversation,senderID);
-					}else{
-						throw new Error('The Conversation is not found in the top 25 on the list');
-					}
-				}else if(response.error){
-					throw new Error(response);
-				}else{
-					throw new Error(response);
-				}
-			})
+			throw new Error('getTMID');
 		}
-	}).then(function(FBConversation){
-		console.log('======================== FBConversation.create END =========================');
-		
-		if(FBConversation){
-			r.FBConversation = FBConversation;
-			console.log('======================== FBMessage.create START =========================');
-			return FBMessage.create({
-				m_mid: 'm_'+message.mid,
-				t_mid: FBConversation.t_mid,
-				created_time:r.Message.created_time,
-				uid_from:r.Message.from.id,
-				uid_to:r.Message.to.data[0].id,
-				message: message.text,
-				seq: message.seq,
-				psid_sender: event.sender.id,
-				psid_recipient: event.recipient.id,
-				timestamp: event.timestamp,
-			});
-
+	}).then(function(result){
+		if(result){
+			r.FBConversation = result.FBConversation;
+			r.FBMessage = result.FBMessage;
+			console.log('======================== 3* io.local.emit(new message) START =========================');
+			io.local.emit('new message', {Conversation:r.FBConversation,Message:r.FBMessage,pid:r.pid});
 		}
-
-	}).then(function(FBMessage){
-		console.log('======================== FBMessage.create END =========================');
-		if(FBMessage){
-			r.FBMessage = FBMessage;
-		}
-
-		if(FBMessage && messageAttachments){
-			console.log('========================INSERT RECEIVED MSG-ATTACH (START)=========================');
-			console.log(messageAttachments);
-
-			//NON-STICKERS
-			if(r.Message.attachments){
-				let attachments = r.Message.attachments;
-				return Sequelize.Promise.mapSeries(messageAttachments,function(messageAttachment,i,N){
-						let Attachment = attachments.data[i];
-						return FBAttachment.create({
-							attachment_id: attachments.data[i].id,
-							m_mid: 'm_'+message.mid,
-							mime_type:Attachment.mime_type,
-							name:Attachment.name,
-							image_data:JSON.stringify(Attachment.image_data),
-							file_url:Attachment.file_url,
-							size:Attachment.size,
-							video_data:JSON.stringify(Attachment.video_data),
-							type: messageAttachment.type,
-							payload: JSON.stringify(messageAttachment.payload),
-							sticker_id: null,
-						});
-				});
-			//STICKERS
-			}else if(r.Message && !r.Message.attachments){
-				return Sequelize.Promise.mapSeries(messageAttachments,function(messageAttachment,i,N){
-						return FBAttachment.create({
-							attachment_id: 'sid_'+randomString('16','#Aa'),
-							m_mid: 'm_'+message.mid,
-							type: messageAttachment.type,
-							payload: JSON.stringify(messageAttachment.payload),
-							sticker_id: message.sticker_id ? message.sticker_id : null,
-						});
-				});
-			}
-		}
-	}).then(function(FBAttachments){
-		r.FBMessage.setDataValue('attachments',{data:FBAttachments});
-
-		return findOneConversation(r.t_mid);
-
-	}).then(function(Instance){
-		if(Instance){
-			r.FBConversation = Instance;
-		}
-		console.log('========================INSERT RECEIVED MSG-ATTACH (END)=========================');
-		//r2 = {Conversation:r.FBConversation};
-		io.local.emit('new message', {Conversation:r.FBConversation,Message:r.FBMessage});
-		/*
-		let conversation_info = {pid:r.FBConversation.pid,t_mid:r.FBConversation.t_mid,psid:senderID};
-
-		if (isEcho) {
-			// Just logging message echoes to console
-			console.log('Received echo for message %s and app %d with metadata %s',
-				messageId, appId, metadata);
-			return;
-		} else if (quickReply) {
-			let quickReplyPayload = quickReply.payload;
-			console.log('Quick reply for message %s with payload %s',
-				messageId, quickReplyPayload);
-
-			sendTextMessage(conversation_info, 'Quick reply tapped');
-			return;
-		}
-		
-		if (messageText) {
-
-			// If we receive a text message, check to see if it matches any special
-			// keywords and send back the corresponding example. Otherwise, just echo
-			// the text we received.
-			switch (messageText) {
-				case 'image':
-					sendImageMessage(senderID);
-					break;
-
-				case 'gif':
-					sendGifMessage(senderID);
-					break;
-
-				case 'audio':
-					sendAudioMessage(senderID);
-					break;
-
-				case 'video':
-					sendVideoMessage(senderID);
-					break;
-
-				case 'file':
-					sendFileMessage(senderID);
-					break;
-
-				case 'button':
-					sendButtonMessage(senderID);
-					break;
-
-				case 'generic':
-					sendGenericMessage(senderID);
-					break;
-
-				case 'receipt':
-					sendReceiptMessage(senderID);
-					break;
-
-				case 'quick reply':
-					sendQuickReply(senderID);
-					break;
-
-				case 'read receipt':
-					sendReadReceipt(senderID);
-					break;
-
-				case 'typing on':
-					sendTypingOn(senderID);
-					break;
-
-				case 'typing off':
-					sendTypingOff(senderID);
-					break;
-
-				case 'account linking':
-					sendAccountLinking(senderID);
-					break;
-
-				default:
-					sendTextMessage(conversation_info, messageText);
-			}
-		} else if (messageAttachments) {
-			sendTextMessage(conversation_info, 'Message with attachment received');
-		}
-		*/
 	}).catch(function(err) {
-		console.log(err);
+		throw err;
 	});
 
 }
 
-/*
- * Delivery Confirmation Event
- *
- * This event is sent to confirm the delivery of a message. Read more about
- * these fields at https://developers.facebook.com/docs/messenger-platform/webhook-reference/message-delivered
- *
- */
 function receivedDeliveryConfirmation(event) {
 	let senderID = event.sender.id;
 	let recipientID = event.recipient.id;
@@ -1291,114 +1308,43 @@ function receivedDeliveryConfirmation(event) {
 		messageIDs.forEach(function(messageID) {
 
 			console.log('========================MSG DELIVERY=========================');
-			console.log('Received delivery confirmation for message ID: %s',
-				messageID);
-			console.log('recipient'+recipientID);
-			console.log('sender'+senderID);
 			console.log(event);
-			console.log('======================== DELIVERY TIMESTAMP =========================');
-			console.log(moment(event.timestamp).format('YYYY-MM-DD HH:mm:ss'));
 
-			let r = {m_mid:'m_'+messageID,pid:recipientID,psid:senderID};
-			FBMessage.findOne({
-				where: {m_mid: r.m_mid},
-			}).then(function(Instance) {
-				
-				if(Instance) {
-					r.FBMessage = Instance;
-					r.FBMessage.delivered_timestamp = event.timestamp;
-					console.log('======================== FBMessage.save START =========================');
-					return r.FBMessage.save();
+			let r = {
+				m_mid:toMMID(messageID),
+				pid:recipientID,
+				psid:senderID
+			};
+
+			console.log('======================== 1 getTMID =========================');
+			return getTMID(PAGE_ACCESS_TOKEN_LONG[r.pid],r.m_mid,r.psid,r.pid)
+			.then(function(t_mid){
+				if(t_mid){
+					r.t_mid = t_mid;
+					console.log('======================== 2 getAndUpsertMessageConversation =========================');
+					return getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,r.m_mid,event,event.sender.id);
 				}else{
-					console.log('======================== getMessage START =========================');
-					return getMessage(PAGE_ACCESS_TOKEN_LONG[r.pid],r.m_mid)
-					.then(function(Message){
-						console.log('======================== getMessage END =========================');
-						if(Message){
-							r.Message = Message;
-							console.log('======================== FBConversation.findOne START =========================');
-							return FBConversation.findOne({where:{pid:r.pid,uid:Message.to.data[0].id}});
-						}
-					}).then(function(Instance){
-						console.log('======================== FBConversation.findOne END =========================');
-						if(Instance){
-							r.FBConversation = Instance;
-							return r.FBConversation;
-						}else{
-							console.log('======================== getConversations START =========================');
-							getConversations(r.pid,null,25)
-							.then(function(Conversations){
-
-								console.log('======================== getconversations END =========================');
-								if(response.data && response.data.length >=1){
-									r.Conversations = response;
-									let Conversations = response.data;
-									let index = Conversations.findIndex((Conversation,i)=>(
-										(Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id) === r.pid_uid
-									));
-									if(index !== -1){
-										var Conversation = Conversations[index];
-										console.log('======================== FBConversation.create START =========================');
-										return createConversation(Conversation,r.psid);
-									}else{
-										throw new Error('The Conversation is not found in the top 25 on the list');
-									}
-								}else if(response.error){
-									throw new Error(response);
-								}else{
-									throw new Error(response);
-								}
-
-							});
-
-						}
-					}).then(function(Instance){
-						console.log('======================== FBConversation.create/findOne END =========================');
-						if(Instance){
-							r.FBConversation = Instance;
-							console.log('======================== upsertMessage START =========================');
-							return upsertMessage(r.FBConversation.t_mid,[r.Message],event.timestamp);
-						}
-					});
+					winston.error('SequelizeNoResultError',{pid:r.pid,psid:r.psid,m_mid:r.m_mid});
+					throw new SequelizeNoResultError('getTMID');
 				}
-			}).then(function(Instance) {
-				console.log('======================== FBMessage.findOne/upsert END =========================');
-				if(Instance) {
-					console.log('======================== FBMessage.findOne START =========================');
-
-					return FBMessage.findOne({
-						where:{m_mid:r.m_mid},
-						include:[{
-							model:FBAttachment
-						}]
-					}).then(sequelizeHandler)
-					.catch(sequelizeErrorHandler);
-
+			}).then(function(result){
+				if(result){
+					r.FBConversation = result.FBConversation;
+					r.FBMessage = result.FBMessage;
+					console.log('======================== 3* io.local.emit(new message) START =========================');
+					io.local.emit('new message', {Conversation:r.FBConversation,Message:r.FBMessage,pid:r.pid});
 				}
-			}).then(function(Message){
-				if(Message){
-					r.FBMessage = Message;
-					return findOneConversation(r.FBMessage.t_mid)
-				}else{
-					throw new Error('Result not found');
-				}
-			}).then(function(Conversation){
-				if(Conversation){
-					r.FBConversation = Conversation;
-					console.log('t_mid='+Conversation.t_mid);
-					io.local.emit('new message', {Conversation:r.FBConversation,Message:r.FBMessage});
-				}else{
-					throw new Error('Result not found');
-				}
-			}).catch(function(err){
+			}).catch(function(err) {
+				winston.error('Error',{error:err});
 				throw err;
 			});
+
+
 		});
 	}
 
 	console.log('All message before %d were delivered.', watermark);
 }
-
 
 /*
  * Postback Event
@@ -1502,80 +1448,102 @@ function sendTextMessage(conversation_info, messageText) {
 	return callSendAPI(messageData,conversation_info);
 }
 
+function sendReadReceipt(recipientId) {
+  console.log("Sending a read receipt to mark message as seen");
+
+  return {
+    recipient: {
+      id: recipientId
+    },
+    sender_action: "mark_seen"
+  };
+}
+
+
 /*
  * Call the Send API. The message data goes in the body. If successful, we'll
  * get the message id in a response
  *
  */
-function callSendAPI(messageData,conversation_info=null) {
+function callSendAPI(message_data,action_type,conversation_info=null) {
 
 	var r = conversation_info ? conversation_info : {};
+	if(r.pid === undefined && r.t_mid === undefined){
+		winston.error('Error',{f:'callSendAPI',pid:r.pid,t_mid:r.t_mid});
+		throw new Error('Function Parameter is undefined');
+	}
+
 	return new Sequelize.Promise(function(resolve,reject){
 		if(r.psid){
-			//console.log('========================SEND MSG PSID (START)=========================');
-			postMessageByPSID(PAGE_ACCESS_TOKEN_MESSENGER[r.pid],messageData)
+			console.log('======================== postMessageByPSID =========================');
+			postMessageByPSID(PAGE_ACCESS_TOKEN_MESSENGER[r.pid],message_data)
 			.then(function(response){
-				//console.log('========================SEND MSG PSID (END)=========================');
-				r.m_mid = 'm_'+response.message_id;
-				resolve('m_'+response.message_id);
+				console.log(response);
+				if(response.message_id){
+					r.m_mid = toMMID(response.message_id);
+					resolve('m_mid');
+				}else if(response.recipient_id){
+					r.psid = response.recipient_id;
+					resolve('psid');
+				}
 			});
-			
 		}else{
-			//console.log('========================SEND MSG T_MID (START)=========================');
-			postMessageByTMID(PAGE_ACCESS_TOKEN_LONG[r.pid],messageData.message.text)
-			.then(function(response){
-				//console.log('========================SEND MSG T_MID (END)=========================');
-				r.m_mid = response.id;
-				resolve(response.id);
-			});
-
+			if(action_type === 'text'){
+				console.log('======================== postMessageByTMID =========================');
+				postMessageByTMID(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,message_data.message.text)
+				.then(function(response){
+					if(response.id){
+						r.m_mid = response.id;
+						resolve('m_mid');
+					}else{
+						winston.error('FBGraphAPINoResultError',{t_mid:r.t_mid});
+						throw new FBGraphAPINoResultError('postMessageByTMID');
+					}
+				});
+			}else{
+				winston.error('PSIDRequiredError',{t_mid:r.t_mid});
+				throw new Error('PSID is required for this action type');
+			}
 		}
-
-	}).then(function(m_mid){
-		//console.log('======================== Promise RESOLVED =========================');
-		//console.log('========================GET MSG (START)=========================');
-
-		return getMessage(PAGE_ACCESS_TOKEN_LONG[r.pid],r.m_mid)
-
-	}).then(function(response){
-		//console.log('========================GET MSG (END)=========================');
-		
-		r.Message = response;
-		//console.log('type='+typeof r.Message);
-
-		//console.log('========================INSERT SENT MSG (START)=========================');
-		return createMessageSent(r.t_mid,r.Message,r.psid);
-
-	}).then(function(Instance) {
-		//console.log('========================INSERT SENT MSG (END)=========================');
-		if(Instance){
-			r.FBMessage = Instance;
-			//console.log('======================== FBConversation.findOne (START)=========================');
-			return findOneConversation(r.t_mid);
+	}).then(function(type){
+		if(type){
+			if(type === 'm_mid'){
+				console.log('======================== getAndUpsertMessageConversation =========================');
+				return getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,r.m_mid,null,(r.psid?r.psid:null));
+			}else if(type === 'psid'){
+				console.log('======================== getAndUpsertConversation =========================');
+				return getAndUpsertConversation(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,r.psid);
+			}
 		}else{
-			throw ('CANNOT CREATE FBMessage.m_mid = '+r.Message.id);
+			winston.error('FBGraphAPINoResultError',{t_mid:r.t_mid,psid:r.psid});
+			throw new FBGraphAPINoResultError('postMessageByPSID || postMessageByTMID');
 		}
-	}).then(function(Instance) {
-		//console.log('======================== FBConversation.findOne (END)=========================');
-		if(Instance){
-			r.FBConversation = Instance;
-			//console.log('======================== FBConversation.save (START)=========================');
-			r.FBConversation.message_count += 1;
-			r.FBConversation.updated_time = r.FBMessage.created_time;
-			return r.FBConversation.save();
-		}else{
-			throw ('CANNOT FIND FBConversation.t_mid = '+r.t_mid);
-		}
-	}).then(function(Instance) {
-		//console.log('======================== FBConversation.save (END)=========================');
-		if(Instance){
+	}).then(function(result) {
+		if(result){
+			if(result.FBConversation){
+				r.FBConversation = result.FBConversation;
+			}
+			if(result.FBMessage){
+				r.FBMessage = result.FBMessage;
+			}
 			return r;
 		}else{
-			throw ('CANNOT SAVE FBConversation.t_mid = '+r.t_mid);
+			winston.error('SequelizeNoResultError',{t_mid:r.t_mid,psid:r.psid});
+			throw new SequelizeNoResultError('SequelizeNoResultError');
 		}
-		
 	});
+}
 
+function getConversation(PAGE_ACCESS_TOKEN,t_mid){
+	return rq('https://graph.facebook.com/v2.8/'+t_mid,{
+		qs:{
+			access_token: PAGE_ACCESS_TOKEN,
+			fields: 'id,snippet,updated_time,message_count,unread_count,link,senders'
+		},
+		method:'GET',
+		json:true
+	}).then(facebookGraphAPIHandler)
+	.catch(facebookGraphAPIErrorHandler);
 }
 
 function postMessageByPSID(PAGE_ACCESS_TOKEN_MESSENGER,message_data){
@@ -1583,7 +1551,7 @@ function postMessageByPSID(PAGE_ACCESS_TOKEN_MESSENGER,message_data){
 		uri: 'https://graph.facebook.com/v2.6/me/messages',
 		qs: {access_token: PAGE_ACCESS_TOKEN_MESSENGER},
 		method: 'POST',
-	json: message_data
+		json: message_data
 	}).then(facebookGraphAPIHandler)
   	.catch(facebookGraphAPIErrorHandler);
 }
@@ -1593,7 +1561,7 @@ function postMessageByTMID(PAGE_ACCESS_TOKEN,t_mid,message){
 		uri: 'https://graph.facebook.com/v2.8/'+t_mid+'/messages',
 		qs: {access_token: PAGE_ACCESS_TOKEN,message:message},
 		method: 'POST',
-	json: true
+		json: true
 	}).then(facebookGraphAPIHandler)
   	.catch(facebookGraphAPIErrorHandler);
 }
@@ -1611,7 +1579,11 @@ function getMessage(PAGE_ACCESS_TOKEN,m_mid){
   	.catch(facebookGraphAPIErrorHandler);
 }
 
-function getMessages(pid,PAGE_ACCESS_TOKEN,t_mid,limit,total_count,matchFunc){
+function getMessages(pid,PAGE_ACCESS_TOKEN,t_mid,options={}){
+	var limit = typeof options.limit !== 'undefined' ? options.limit : 100;
+	var total_count = typeof options.total_count !== 'undefined' ? options.total_count : null;
+	var matchFunc = typeof options.matchFunc !== 'undefined' ? options.matchFunc : ((x,i)=>(false));
+
 	let uri = 'https://graph.facebook.com/v2.8/'+t_mid+'/messages';
 	let qs = {
 		access_token: PAGE_ACCESS_TOKEN,
@@ -1624,7 +1596,7 @@ function getMessages(pid,PAGE_ACCESS_TOKEN,t_mid,limit,total_count,matchFunc){
 		nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
 			let list = response.data;
 			if(r.data && r.data.length>=1){
-				if(total_count && (total_count >= r.data.length)){
+				if(total_count && (total_count <= r.data.length)){
 					r.continue = false;
 					resolve(r);
 				}else{
@@ -1649,8 +1621,6 @@ function getMessages(pid,PAGE_ACCESS_TOKEN,t_mid,limit,total_count,matchFunc){
 
 function getPageLabels(PAGE_ACCESS_TOKEN,options={}){
 	var limit = options.limit === undefined ? 100 : options.limit;
-	console.log(options);
-	console.log(limit);
 	let uri = 'https://graph.facebook.com/v2.8/me/labels';
 	let qs = {
 		access_token: PAGE_ACCESS_TOKEN,
@@ -1662,7 +1632,6 @@ function getPageLabels(PAGE_ACCESS_TOKEN,options={}){
 function postPageLabel(PAGE_ACCESS_TOKEN,uid,label_id,options={}){
 	var is_delete = options.is_delete === undefined ? false : options.is_delete;
 
-	console.log('======================== postPageLabel START =========================');
 	return rq({
 		uri: 'https://graph.facebook.com/v2.8/'+label_id+'/users',
 		qs: {
@@ -1743,8 +1712,17 @@ function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
 	});
 }
 
+function findOneMessage(m_mid){
+	return FBMessage.findOne({
+		where:{m_mid:m_mid},
+		include:[{
+			model:FBAttachment
+		}]
+	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
+}
+
 function findAllMessages(t_mid,options={}){
-	var limit = (options.limit !== undefined) ? options.limit : 25;
+	var limit = (options.limit !== undefined) ? options.limit : null;
 	var before = (options.before !== undefined) ? options.before : null;
 	var where;
 	if(before){
@@ -1755,26 +1733,11 @@ function findAllMessages(t_mid,options={}){
 
 	return FBMessage.findAll({
 		where:where,
-	include:[{
-		model:FBAttachment,
-	}],
+		include:[{
+			model:FBAttachment,
+		}],
 		order:[['created_time','DESC']],
 		limit:limit
-	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
-}
-
-function createMessageSent(t_mid,Message,psid){
-	return FBMessage.create({
-		m_mid: Message.id,
-		t_mid: t_mid,
-		created_time:Message.created_time,
-		uid_from:Message.from.id,
-		uid_to:Message.to.data[0].id,
-		message: Message.message,
-		seq: null,
-		psid_sender: Message.from.id,
-		psid_recipient: psid ? psid : null,
-		timestamp: Math.round(+new Date()),
 	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
 }
 
@@ -1789,11 +1752,10 @@ function upsertMessages(t_mid,Messages){
 			message: Message.message,
 			attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
 		},{
-			where: {
-				m_mid: Message.id,
-			},
+			where: {m_mid: Message.id}
 		}).then(sequelizeHandler)
 		.then(function(FBMessage){
+			//IMAGES, VIDEO, AUDIO FROM PAGE & USER
 			if(FBMessage && Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
 				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
@@ -1806,14 +1768,16 @@ function upsertMessages(t_mid,Messages){
 						file_url:Attachment.file_url,
 						size:Attachment.size,
 						video_data:JSON.stringify(Attachment.video_data)
-					}).then(sequelizeHandler).catch(sequelizeErrorHandler);
+					},{
+						where:{attachment_id:Attachment.id}
+					}).then(sequelizeHandler);
 				});
 			}
 		}).catch(sequelizeErrorHandler);
 	});
 }
 
-function upsertMessage(t_mid,Messages,delivery_timestamp,read_timestamp){
+function upsertMessage(t_mid,Messages,event){
 	return Sequelize.Promise.mapSeries(Messages,(Message,i)=>{
 		return FBMessage.upsert({
 			m_mid: Message.id,
@@ -1823,14 +1787,13 @@ function upsertMessage(t_mid,Messages,delivery_timestamp,read_timestamp){
 			uid_to: Message.to.data[0].id,
 			message: Message.message,
 			attachment_id: Message.attachments ? Message.attachments.data[0].id : null,
-			delivery_timestamp:delivery_timestamp ? delivery_timestamp : null,
-			read_timestamp:read_timestamp ? read_timestamp : null
+			delivery_timestamp:event.delivery ? event.timestamp : null,
+			read_timestamp:event.read ? event.timestamp : null
 		},{
-			where: {
-				m_mid: Message.id,
-			},
+			where: {m_mid: Message.id}
 		}).then(sequelizeHandler)
 		.then(function(FBMessage){
+			//IMAGES, VIDEO, AUDIO FROM PAGE & USER			
 			if(FBMessage && Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
 				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
@@ -1845,6 +1808,22 @@ function upsertMessage(t_mid,Messages,delivery_timestamp,read_timestamp){
 						video_data:JSON.stringify(Attachment.video_data)
 					}).then(sequelizeHandler).catch(sequelizeErrorHandler);
 				});
+			//STICKERS FROM USERS ONLY
+			}else if(!Message.attachments && event && event.message && event.message.attachments){
+				return Sequelize.Promise.mapSeries(event.message.attachments,function(attachment,i,N){
+					return FBAttachment.upsert({
+						attachment_id: 'sid_'+randomString('16','#Aa'),
+						m_mid: Message.id,
+						type: attachment.type,
+						payload: JSON.stringify(attachment.payload),
+						sticker_id: event.message.sticker_id ? event.message.sticker_id : null,
+					},{
+						where:{sticker_id:event.message.sticker_id,m_mid:Message.id}
+					}).then(sequelizeHandler)
+					.catch(sequelizeErrorHandler);
+				});
+			}else{
+				//skip to next then
 			}
 		}).catch(sequelizeErrorHandler);
 	});
@@ -1860,22 +1839,24 @@ function findOneConversation(t_mid){
 	.catch(sequelizeErrorHandler);
 }
 
-function createConversation(Conversation,psid){
-
-	return FBConversation.create({
+function upsertConversation(Conversation,psid=undefined){
+	return FBConversation.upsert({
 		pid: Conversation.senders.data[1].id,
 		uid: Conversation.senders.data[0].id,
 		pid_uid: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
 		t_mid: Conversation.id,
-		psid: psid,
+		psid: (psid !== undefined ? psid : undefined),
 		updated_time: Conversation.updated_time,
 		link: Conversation.link,
 		name: Conversation.senders.data[0].name,
 		snippet:	Conversation.snippet,
 		message_count: Conversation.message_count,
 		unread_count: Conversation.unread_count,
+	},{
+		where: {
+			t_mid: Conversation.id,
+		},
 	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
-
 }
 
 function destroyConversationLabel(t_mid,label_id){
@@ -1887,6 +1868,165 @@ function destroyConversationLabel(t_mid,label_id){
 		force:true
 	}).then(sequelizeHandler)
 	.catch(sequelizeErrorHandler);
+}
+
+function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid){
+	var r = {};
+
+	console.log('2 ======================== 1 FBConversation.findOne(psid) =========================');
+	return FBConversation.findOne({
+		where : {psid:psid}
+	}).then(sequelizeHandler)
+	.then(function(Instance){
+		if(Instance){
+			console.log('2 ======================== 2.A* return t_mid =========================');
+			r.FBConversation = Instance;
+			r.t_mid = r.FBConversation.t_mid;
+			return r.t_mid;//1ST RETURN CONDITION
+		}else{
+			console.log('2 ======================== 2.B getMessage =========================');
+			return getMessage(PAGE_ACCESS_TOKEN,m_mid)
+			.then(function(response){
+				if(response.id){
+					r.Message = response;
+					if(r.Message.from.id === pid){
+						r.uid = r.Message.to.data[0].id;
+					}else{
+						r.uid = r.Message.from.id;
+					}
+					console.log('2 ======================== 2.B2 FBConversation.findOne(pid,uid) =========================');					
+					return FBConversation.findOne({
+						where : {pid:pid,uid:r.uid}
+					}).then(sequelizeHandler)
+					.then(function(Instance){
+						if(Instance){
+							console.log('2 ======================== 2.B3.A* return t_mid =========================');					
+							r.FBConversation = Instance;
+							r.t_mid = r.FBConversation.t_mid;
+							return r.t_mid;//2ND RETURN CONDITION
+						}else{
+							console.log('2 ======================== 2.B3.B getConversations(pid) =========================');					
+							return getConversations(pid,{limit:25})
+							.then(function(response){
+								if(response.data && response.data.length >=1){
+									r.Conversations = response;
+									var Conversations = response.data;
+									var index = Conversations.findIndex((Conversation,i)=>(
+										(Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id) === pid+'_'+r.uid
+									));
+									if(index !== -1){
+										console.log('2 ======================== 2.B3.B2.A* return t_mid =========================');					
+										r.Conversation = Conversations[index];
+										r.t_mid = r.Conversation.id;
+										return r.t_mid; //3RD RETURN CONDITION
+									}else{
+										winston.error('Conversation not found in top 25',{m_mid:m_mid,psid:psid,uid:r.uid});
+										throw new Error('The Conversation is not found in the top 25 on the list');
+									}
+								}else{
+									winston.error('FBGraphAPINoResultError',{f:'getConversations',pid:r.pid});
+									throw new FBGraphAPINoResultError('getConversations');
+								}
+							});
+						}
+					});
+				}else{
+					winston.error('FBGraphAPINoResultError',{m_mid:m_mid});
+					throw new FBGraphAPINoResultError('getMessage');
+				}
+			})
+		}
+	})
+
+}
+
+function getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN,t_mid,m_mid,event=null,psid=null,Conversation=null,Message=null){
+	var r = {};
+
+	return getMessage(PAGE_ACCESS_TOKEN, m_mid)
+	.then(function(response){
+		if(response){
+			Message = response;
+			return getConversation(PAGE_ACCESS_TOKEN, t_mid);
+		}else{
+			winston.error('FBGraphAPINoResultError',{f:'getMessage',m_mid:m_mid});
+			throw new FBGraphAPINoResultError('getMessage');
+		}
+	}).then(function(response){
+		if(response){
+			Conversation = response;
+			if(Message && (event && event.message || event && event.delivery || !event) ){
+				return upsertMessage(t_mid,[Message],event);
+			}else{
+				winston.error('Error unknown messaging event');
+				throw new Error('unknown messaging event');
+			}
+		}else{
+			winston.error('FBGraphAPINoResultError',{f:'getConversation',t_mid:t_mid});
+			throw new FBGraphAPINoResultError('getConversation');
+		}
+	}).then(function(InstanceOrSuccess){
+		return upsertConversation(Conversation, (psid ? psid : undefined));
+	}).then(function(success){
+		return findOneMessage(m_mid);
+	}).then(function(Instance){
+		if(Instance){
+			r.FBMessage = Instance;
+			return findOneConversation(t_mid);
+		}else{
+			winston.error('SequelizeNoResultError',{f:'findOneMessage',m_mid:m_mid});
+			throw new SequelizeNoResultError('findOneMessage');
+		}
+	}).then(function(Instance){
+		if(Instance){
+			r.FBConversation = Instance;
+			return r;
+		}else{
+			winston.error('SequelizeNoResultError',{f:'findOneConversation',t_mid:t_mid});
+			throw new SequelizeNoResultError('findOneConversation');
+		}
+	}).catch(function(err){
+		throw err;
+	});
+
+}
+
+function getAndUpsertConversation(PAGE_ACCESS_TOKEN,t_mid,psid,Conversation=null){
+	var r = {};
+
+	return getConversation(PAGE_ACCESS_TOKEN, t_mid)
+	.then(function(response){
+		if(response){
+			Conversation = response;
+			return upsertConversation(Conversation,psid);
+		}else{
+			winston.error('FBGraphAPINoResultError',{f:'getConversation',t_mid:t_mid});
+			throw new FBGraphAPINoResultError('getConversation');
+		}
+	}).then(function(success){
+		return findOneConversation(t_mid);
+	}).then(function(Instance){
+		if(Instance){
+			r.FBConversation = Instance;
+			return r;
+		}else{
+			winston.error('SequelizeNoResultError',{f:'findOneConversation',t_mid:t_mid});
+			throw new SequelizeNoResultError('findOneConversation');
+		}
+	}).catch(function(err){
+		throw err;
+	});
+
+}
+
+function toMMID(id){
+	var prefix = id.substring(0,3);
+	if(prefix === 'mid'){
+		return 'm_'+id;
+	}else if(prefix === 'm_m'){
+		return id;
+	}
+	return id;
 }
 
 function sequelizeHandler(Instance){
@@ -1916,19 +2056,20 @@ function sequelizeErrorHandler(err){
 }
 
 function facebookGraphAPIHandler(response){
-		if(response.success || (response.data && response.data.length >= 1)  || response.id){
-			return response;
-		}else if(response.message_id || response.recipient_id){
-			return response;
-		}else if(response.error){
-			winston.error('FBGraphAPIStandardError',response);
-			throw new FBGraphAPIStandardError(response.error.message);
-		}else{
-			winston.error('FBGraphAPIError',response);
-			throw new FBGraphAPIError(JSON.stringify(response));
-		}
+	if(response.success || (response.data && response.data.length >= 1)  || response.id){
+		return response;
+	}else if(response.message_id || response.recipient_id){
+		return response;
+	}else if(response.data && response.data.length === 0){
+		return response;
+	}else if(response.error){
+		winston.error('FBGraphAPIStandardError',response);
+		throw new FBGraphAPIStandardError(response.error.message);
+	}else{
+		winston.error('FBGraphAPIError',response);
+		throw new FBGraphAPIError(JSON.stringify(response));
 	}
-
+}
 
 function facebookGraphAPIErrorHandler(err){
 	if(err instanceof Error){
@@ -1937,5 +2078,113 @@ function facebookGraphAPIErrorHandler(err){
 	}
 }
 
+
+//NO USE FUNCTION
+
+function createMessageSent(t_mid,Message,psid){
+	return FBMessage.create({
+		m_mid: Message.id,
+		t_mid: t_mid,
+		created_time:Message.created_time,
+		uid_from:Message.from.id,
+		uid_to:Message.to.data[0].id,
+		message: Message.message,
+		seq: null,
+		psid_sender: Message.from.id,
+		psid_recipient: psid ? psid : null,
+		timestamp: Math.round(+new Date()),
+	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
+}
+
+function createMessage(t_mid,Message,event){
+
+	var result = {};
+	//console.log('======================== FBMessage.create START =========================');
+	return (()=>(
+	FBMessage.create({
+		m_mid: Message.id,
+		t_mid: t_mid,
+		created_time:Message.created_time,
+		uid_from:Message.from.id,
+		uid_to:Message.to.data[0].id,
+		message: Message.message
+		//seq: event.message.seq,
+		//psid_sender: event.sender.id,
+		//psid_recipient: event.recipient.id,
+		//timestamp: event.timestamp
+	}).then(sequelizeHandler).catch(sequelizeErrorHandler)))()
+	.then(function(Instance){
+		//console.log('======================== FBMessage.create END =========================');
+		if(Instance){
+			result.FBMessage = Instance;
+			//console.log('========================INSERT RECEIVED MSG-ATTACH (START)=========================');
+			//NON-STICKERS
+			if(Message.attachments && Message.attachments.data.length >=1){
+				//let attachments = Message.attachments;
+				return Sequelize.Promise.mapSeries(Message.attachments.data,function(Attachment,i,N){
+					//let Attachment = attachments.data[i];
+					return (()=>(
+					FBAttachment.create({
+						attachment_id: Attachment.id,
+						m_mid: Message.id,
+						mime_type:Attachment.mime_type,
+						name:Attachment.name,
+						image_data:JSON.stringify(Attachment.image_data),
+						file_url:Attachment.file_url,
+						size:Attachment.size,
+						video_data:JSON.stringify(Attachment.video_data)
+						//type: attachment.type,
+						//payload: JSON.stringify(attachment.payload),
+						//sticker_id: null,
+					}).then(sequelizeHandler).catch(sequelizeErrorHandler)))();
+				});
+			//STICKERS
+			}else if(!Message.attachments && event && event.message && event.message.attachments){
+				return Sequelize.Promise.mapSeries(event.message.attachments,function(attachment,i,N){
+					return (()=>( 
+					FBAttachment.create({
+						attachment_id: 'sid_'+randomString('16','#Aa'),
+						m_mid: Message.id,
+						type: attachment.type,
+						payload: JSON.stringify(attachment.payload),
+						sticker_id: event.message.sticker_id ? event.message.sticker_id : null,
+					}).then(sequelizeHandler).catch(sequelizeErrorHandler)))();
+				});
+			}else{
+				//skip to next then
+			}
+		}else{
+			var err = new SequelizeNoResultError('FBMessage.create');
+			winston.error('SequelizeNoResultError',{f:'FBMessage.create'});
+			throw err;
+		}
+	}).then(function(Instances){
+		if(Instances){
+			result.FBAttachments = Instances;
+			result.FBMessage.setDataValue('FBAttachments',{data:result.FBAttachments});
+			//result.FBMessage.FBAttachments = {data:result.FBAttachments};
+		}
+		return result.FBMessage;
+	}).catch(function(err){
+		throw err;
+	})
+
+}
+
+function createConversation(Conversation,psid){
+	return FBConversation.create({
+		pid: Conversation.senders.data[1].id,
+		uid: Conversation.senders.data[0].id,
+		pid_uid: Conversation.senders.data[1].id+'_'+Conversation.senders.data[0].id,
+		t_mid: Conversation.id,
+		psid: psid,
+		updated_time: Conversation.updated_time,
+		link: Conversation.link,
+		name: Conversation.senders.data[0].name,
+		snippet:	Conversation.snippet,
+		message_count: Conversation.message_count,
+		unread_count: Conversation.unread_count,
+	}).then(sequelizeHandler).catch(sequelizeErrorHandler);
+}
 
 };

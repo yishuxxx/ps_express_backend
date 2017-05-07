@@ -130,7 +130,7 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
             if(this.FBAttachments && this.FBAttachments.length >= 1){
               return {data:this.FBAttachments};
             }
-            return null
+            return null;
           }
         }
     });

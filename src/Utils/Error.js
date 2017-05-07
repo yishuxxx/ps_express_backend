@@ -28,7 +28,16 @@ class FBGraphAPIStandardError extends Error {
 	    return err;
 	}
 }
-module.exports.FBGraphAPIError = FBGraphAPIError;
+module.exports.FBGraphAPIStandardError = FBGraphAPIStandardError;
+
+class FBGraphAPINoResultError extends Error {
+	constructor(msg){
+		let err = super(msg);
+	    err.name = "FBGraphAPINoResultError";
+	    return err;
+	}
+}
+module.exports.FBGraphAPINoResultError = FBGraphAPINoResultError
 
 class SequelizeError extends Error {
 	constructor(msg){
@@ -47,3 +56,12 @@ class SequelizeNoResultError extends Error {
 	}
 }
 module.exports.SequelizeNoResultError = SequelizeNoResultError;
+
+class RequestQueryParametersInvalidError extends Error {
+	constructor(msg){
+		let err = super(msg);
+	    err.name = "RequestQueryParametersInvalidError";
+	    return err;
+	}
+}
+module.exports.RequestQueryParametersInvalidError = RequestQueryParametersInvalidError;
