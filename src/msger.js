@@ -14,14 +14,13 @@ import {randomString} from './Utils/Helper';
 const initial_state = Immutable({
   connection:'',
   Pages:[
-    {pid:1769068019987617},
-    {pid:1661200044095778}
-  ]
-  Conversations:[],
+    {pid:1769068019987617,Conversations:[]},
+    {pid:1661200044095778,Conversations:[]}
+  ],
   ConvManagers:[{
+    pid     : 1769068019987617,
     Conversations:{data:[]},
     filter:{
-      pid     : 1769068019987617,//1769068019987617
       before  : moment().format('YYYY-MM-DD HH:mm:ss'),
       limit   : 100,
       replied_by    : [],
@@ -32,9 +31,9 @@ const initial_state = Immutable({
       enquiry_times  : null
     }
   },{
+    pid     : 1661200044095778,
     Conversations:{data:[]},
     filter:{
-      pid     : 1661200044095778,
       before  : moment().format('YYYY-MM-DD HH:mm:ss'),
       limit   : 100,
       replied_by    : [],
@@ -54,69 +53,100 @@ var reducer = function(state=Immutable([]),action=null){
       state = Immutable.setIn(state,['connection_status'], action.connection_status);
       break;
     case 'GET_LABELS_RESPONSE_SUCCESS':
-      state = Immutable.setIn(state, ["ConvManagers", parseInt(action.list_i,10), "FBLabels"], action.FBLabels);
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var cman_is = 
+      state.ConvManagers.reduce(function(a, x, i) {
+          if (parseInt(x.pid,10) === parseInt(pid,10))
+              a.push(i);
+          return a;
+      }, []);
+
+      state = Immutable.setIn(state, ["Pages", page_i, "FBLabels"], action.FBLabels);
+      cman_is.map((cman_i,i)=>{
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "FBLabels"], action.FBLabels);
+      });
       break;
     case 'GET_CONVERSATIONS_RESPONSE_SUCCESS':
-      var Conversations = ( state.Conversations && state.Conversations.length>=1 ? Immutable.asMutable(state.Conversations) : [] );
-      var Conversations2 = ( state.ConvManagers[parseInt(action.list_i,10)].Conversations && state.ConvManagers[parseInt(action.list_i,10)].Conversations.length>=1 ? Immutable.asMutable(state.ConvManagers[parseInt(action.list_i,10)].Conversations) : [] );
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var cman_is = 
+      state.ConvManagers.reduce(function(a, x, i) {
+          if (parseInt(x.pid,10) === parseInt(pid,10))
+              a.push(i);
+          return a;
+      }, []);
+
+      var Conversations = ( Page.Conversations && Page.Conversations.length>=1 ? Immutable.asMutable(Page.Conversations) : [] );
       var ConversationsLoaded = action.response.data;
 
       ConversationsLoaded.map((ConversationLoaded,i)=>{
         var index = Conversations.findIndex((x,i)=>(x.t_mid === ConversationLoaded.t_mid));
-        var index2 = Conversations2.findIndex((x,i)=>(x.t_mid === ConversationLoaded.t_mid));
         if(index === -1){
           Conversations.push(ConversationLoaded);
         }else{
           Conversations[index] = ConversationLoaded;
         }
-
-        if(index2 === -1){
-          Conversations2.push(ConversationLoaded);
-        }else{
-          Conversations2[index] = ConversationLoaded;
-        }
       });
 
-      state = Immutable.setIn(state, ["Conversations"], Conversations);
-      state = Immutable.setIn(state, ["ConvManagers", parseInt(action.list_i,10), "Conversations"], {
-        data:Conversations2,
-        paging:action.response.paging,
-        list_i:action.response.list_i
+      state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
+      cman_is.map((cman_i,i)=>{
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
+          data:Conversations
+        });
       });
+
       break;
     case 'REFRESH_CONVERSATIONS':
-      var Conversations = state.Conversations;
-      var ConvManagers = state.ConvManagers;
-      var ConversationsLoaded = action.Conversations;
       var pid = action.pid;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var cman_is = 
+      state.ConvManagers.reduce(function(a, x, i) {
+          if (parseInt(x.pid,10) === parseInt(pid,10))
+              a.push(i);
+          return a;
+      }, []);
+
+      var Conversations = Page.Conversations;
+      var ConversationsLoaded = action.Conversations;
 
       Conversations = mergeConversations(Conversations,ConversationsLoaded,true,true);
       Conversations.sort(dateCompare);
-      state = Immutable.setIn(state, ["Conversations"], Conversations);
+      state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
 
-      ConvManagers.map((ConvManager,i)=>{
-        //console.log(parseInt(pid,10));
-        //console.log(parseInt(ConvManager.filter.pid,10));
-        //console.log((parseInt(pid,10) === parseInt(ConvManager.filter.pid,10)));
-        if(ConvManager.Conversations && ConvManager.Conversations.data.length >= 0 && (parseInt(action.pid,10) === parseInt(ConvManager.filter.pid,10)) ){
-          var Conversations2 = mergeConversations(ConvManager.Conversations.data,ConversationsLoaded,true,true);
-          Conversations2.sort(dateCompare);
-          state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data'], Conversations2);
-        }
+      cman_is.map((cman_i,i)=>{
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
+          data:Conversations
+        });
       });
       break;
     case 'NEW_MESSAGE':
       console.log(action);
-      var Conversations = state.Conversations;
-      var ConvManagers = state.ConvManagers;
+
+      var pid = action.pid;
       var t_mid = action.t_mid;
-      var index = Conversations.findIndex((x,i)=>(x.t_mid === t_mid));
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var cman_is = 
+      state.ConvManagers.reduce(function(a, x, i) {
+          if (parseInt(x.pid,10) === parseInt(pid,10))
+              a.push(i);
+          return a;
+      }, []);
+
+      var Conversations = Page.Conversations;
+      //var ConvManagers = state.ConvManagers;
+
+      var conv_i = Conversations.findIndex((x,i)=>(x.t_mid === t_mid));
 
       //OLD MESSAGES
-      if(index === -1 || !Conversations[index].messages){
+      if(conv_i === -1 || !Conversations[conv_i].messages){
         var Messages = [];
       }else{
-        var Messages = Immutable.asMutable(Conversations[index].messages.data);
+        var Messages = Immutable.asMutable(Conversations[conv_i].messages.data);
       }
 
       //MERGE OLD AND NEW MESSAGE
@@ -133,30 +163,19 @@ var reducer = function(state=Immutable([]),action=null){
         var ConversationChanged = action.Conversation;
         ConversationChanged.messages = {data:Messages};
       }else{
-        var ConversationChanged = Conversations[index];
+        var ConversationChanged = Conversations[conv_i];
         ConversationChanged = Immutable.setIn(ConversationChanged,['messages','data'],Messages);
       }
 
-      //ConversationChanged.messages = {data:Messages};
       Conversations = mergeConversations(Conversations,[ConversationChanged],true,false);
       Conversations.sort(dateCompare);
 
-      //var Conversation = Immutable.merge(Conversations[index],action.Conversation);
-      state = Immutable.setIn(state, ["Conversations"], Conversations);
-
-      ConvManagers.map((ConvManager,i)=>{
-        //console.log(parseInt(action.pid,10));
-        //console.log(parseInt(ConvManager.filter.pid,10));
-        //console.log((parseInt(action.pid,10) === parseInt(ConvManager.filter.pid,10)));
-        if(ConvManager.Conversations && ConvManager.Conversations.data.length >= 0 && (parseInt(action.pid,10) === parseInt(ConvManager.filter.pid,10)) ){
-          var Conversations2 = mergeConversations(ConvManager.Conversations.data,[ConversationChanged],true,false);
-          Conversations2.sort(dateCompare);
-          //var index = ConvManager.Conversations.data.findIndex((x,i)=>(x.t_mid === t_mid));
-          //state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data',index,'messages','data'], Messages);
-          state = Immutable.setIn(state, ['ConvManagers',i,'Conversations','data'], Conversations2);
-        }
+      state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
+      cman_is.map((cman_i,i)=>{
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
+          data:Conversations
+        });
       });
-      
       break;
     default:
       break;
@@ -417,13 +436,13 @@ class ConvLoadFilter extends Component{
   }
 
   handleGetConversations = (event) => {
-    var list_i = this.props.list_i;
-    getConversations(list_i);
+    var cman_i = this.props.list_i;
+    getConversations(cman_i);
   }
 
   handleGetMoreConversations = (event) => {
-    var list_i = this.props.list_i;    
-    getConversations(list_i,'MORE');
+    var cman_i = this.props.list_i;    
+    getConversations(cman_i,'MORE');
   }
 
   handleRefreshConversations = (event) => {
@@ -772,7 +791,7 @@ class ConversationManager extends Component{
                                 key={Conversation.id}
                                 Conversation={Conversation}
                                 ConversationC={ConversationC}
-                                pid={this.props.ConvManager.filter.pid}
+                                pid={this.props.ConvManager.pid}
                                 i={index}
                                 setConversationSelected={this.setConversationSelected}
                               />
@@ -801,7 +820,7 @@ class ConversationManager extends Component{
               ConversationC
               ? <MessageManager 
                   messages={ConversationC.messages}
-                  page_id={this.props.ConvManager.filter.pid}
+                  page_id={this.props.ConvManager.pid}
                   t_mid={this.state.t_mid_selected}
                   message_count={ConversationC.message_count}
                   FBLabels={this.props.ConvManager.FBLabels}
@@ -892,28 +911,30 @@ socket.on('login', function (data) {
   console.log(message);
 });
 
-
-socket.on('GET_LABELS', function (response) {
-  console.log(response);
+socket.on('GET_LABELS', function (data) {
+  console.log('ON');
+  console.log(data);
   rstore.dispatch({
     type:'GET_LABELS_RESPONSE_SUCCESS',
-    FBLabels:response.data,
-    pid:response.pid
+    pid:data.pid,
+    FBLabels:data.data,
   });
   rerender();
 });
 
-socket.on('GET_CONVERSATIONS', function (response) {
-  console.log(response);
+socket.on('GET_CONVERSATIONS', function (data) {
+  console.log('ON');
+  console.log(data);
   rstore.dispatch({
     type:'GET_CONVERSATIONS_RESPONSE_SUCCESS',
-    response:response,
-    list_i:response.list_i
+    pid:data.pid,
+    response:data
   });
   rerender();
 });
 
 socket.on('GET_MESSAGES', function (data) {
+  console.log('ON');
   console.log(data);
   rstore.dispatch({
     type:'NEW_MESSAGE',
@@ -925,6 +946,7 @@ socket.on('GET_MESSAGES', function (data) {
 });
 
 socket.on('REFRESH_CONVERSATIONS', function (data) {
+  console.log('ON');
   console.log(data);
   rstore.dispatch({
     type:'REFRESH_CONVERSATIONS',
@@ -936,26 +958,29 @@ socket.on('REFRESH_CONVERSATIONS', function (data) {
 
 // Whenever the server emits 'new message', update the chat body
 socket.on('new message', function (data) {
-  if(data.Message && data.Message.message){
-    console.log('message='+data.Message.message);
-    console.log(data);
-  }else if(data.Message && data.Message.attachments && data.Message.attachments.data.length>=1){
-    console.log('attachments=');
-    console.log(data.Message.attachments.data[0]);
-    console.log(data);
-  }else{
-    console.log(data);
-  }
+  if(true){
+    console.log('ON');
+    if(data.Message && data.Message.message){
+      console.log('message='+data.Message.message);
+      console.log(data);
+    }else if(data.Message && data.Message.attachments && data.Message.attachments.data.length>=1){
+      console.log('attachments=');
+      console.log(data.Message.attachments.data[0]);
+      console.log(data);
+    }else{
+      console.log(data);
+    }
 
-  rstore.dispatch({
-    type:'NEW_MESSAGE',
-    pid:data.pid,
-    t_mid:data.Conversation.t_mid,
-    Conversation:data.Conversation,
-    Message:data.Message ? data.Message : null,
-    Messages:data.Messages ? data.Messages : null
-  });
-  rerender();
+    rstore.dispatch({
+      type:'NEW_MESSAGE',
+      pid:data.pid,
+      t_mid:data.Conversation.t_mid,
+      Conversation:data.Conversation,
+      Message:data.Message ? data.Message : null,
+      Messages:data.Messages ? data.Messages : null
+    });
+    rerender();
+  }
 });
 /*
 // Whenever the server emits 'user joined', log it in the chat body
@@ -1019,6 +1044,7 @@ socket.on('reconnect_error', function () {
 });
 
 socket.on('ERROR', function (data) {
+  console.log('ON');
   console.log(data);
   alert(data.message);
 });
@@ -1055,13 +1081,23 @@ function sendReadReceipt(pid,t_mid){
   }
 }
 
-function getConversations(list_i, more) {
+function getConversations(cman_i, more) {
+  var state = rstore.getState();
+  var pid = state.ConvManagers[cman_i].pid;
+  var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+  var Page = state.Pages[page_i];
+
   if (connected) {
     if(more === 'MORE'){
-      socket.emit('GET_CONVERSATIONS', {filter:rstore.getState().ConvManagers[list_i].Conversations.paging.next,list_i:list_i});
+      var before = Page.Conversations[Page.Conversations.length-1].updated_time;
+      var limit = 100;
+      var data = {pid:pid,before:before,limit:limit};
     }else{
-      socket.emit('GET_CONVERSATIONS', {filter:rstore.getState().ConvManagers[list_i].filter,list_i:list_i});
+      var data = {pid:pid};
     }
+    socket.emit('GET_CONVERSATIONS', data);
+    console.log('EMIT')
+    console.log(data);
   }
 }
 
@@ -1069,21 +1105,26 @@ function getMessages(pid,t_mid,latest_only) {
   var latest_only = typeof latest_only !== 'undefined' ? latest_only : true;
 
   if (connected) {
-    socket.emit('GET_MESSAGES',{
+    var data = {
       pid:pid,
       t_mid:t_mid,
       latest_only:latest_only
-    });
+    };
+    socket.emit('GET_MESSAGES',data);
+    console.log('EMIT');
+    console.log(data);
   }
 }
 
-function refreshConversations(list_i){
-  var pid = rstore.getState().ConvManagers[list_i].filter.pid;
+function refreshConversations(cman_i){
+  var state = rstore.getState();
+  var pid = state.ConvManagers[cman_i].pid;
 
   if(connected){
-    socket.emit('REFRESH_CONVERSATIONS',{
-      pid:pid
-    });
+    var data = {pid:pid};
+    socket.emit('REFRESH_CONVERSATIONS',data);
+    console.log('EMIT');
+    console.log(data);
   }
 }
 
@@ -1174,5 +1215,5 @@ window.rerender  = rerender;
 window.moment = moment;
 window.rstore = rstore;
 window.Immutable = Immutable;
-socket.emit('GET_LABELS', {pid:rstore.getState().Pages.data[0].pid});
-socket.emit('GET_LABELS', {pid:rstore.getState().Pages.data[1].pid});
+socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
+socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});

@@ -80,11 +80,11 @@ io.on('connection', function(socket) {
 
 	socket.on('GET_LABELS', function(data) {
 		console.log('======================== socket.on(GET_LABELS) START =========================');
-		var r = {pid:data.pid,list_i:data.list_i};
+		var q = {pid:data.pid};
 
 		(()=>{
 			return FBLabel.findAll({
-				where:{pid:r.pid}
+				where:{pid:q.pid}
 			}).then(sequelizeHandler)
 			.catch(sequelizeErrorHandler);
 		})()
@@ -93,7 +93,7 @@ io.on('connection', function(socket) {
 				console.log('======================== socket.on(GET_LABELS) END =========================');
 				socket.emit('GET_LABELS', {
 					data:Instances,
-					list_i:r.list_i
+					pid:q.pid
 				});
 			}else{
 				socket.emit('ERROR', {
@@ -186,20 +186,18 @@ io.on('connection', function(socket) {
 
 	socket.on('GET_CONVERSATIONS', function(data) {
 		console.log('======================== socket.on(GET_CONVERSATIONS) START =========================');
-
-		var pid = data.filter.pid;
-		var before = moment.utc(data.filter.before).format("YYYY-MM-DD HH:mm:ss");
-		var limit = data.filter.limit;
-		var list_i = data.list_i;
-		var r = {
-
+		var q = {
+			pid:data.pid,
+			before:typeof data.before !== 'undefined' ? moment.utc(data.before).format("YYYY-MM-DD HH:mm:ss") : moment.utc().format("YYYY-MM-DD HH:mm:ss"),
+			limit:typeof data.limit !== 'undefined' ? data.limit : 100
 		};
+		var r = {};
 		
 		(()=>{
 			return FBConversation.findAll({
 				where:{
-					pid:pid,
-					updated_time:{$lt:before}
+					pid:q.pid,
+					updated_time:{$lt:q.before}
 				},
 				include:[{
 					model:FBLabel
@@ -214,7 +212,7 @@ io.on('connection', function(socket) {
 					['updated_time','DESC'],
 					[FBMessage, 'created_time','DESC']
 				],
-				limit:limit
+				limit:q.limit
 			}).then(sequelizeHandler)
 			.catch(sequelizeErrorHandler);		  
 		})()
@@ -229,17 +227,12 @@ io.on('connection', function(socket) {
 					}
 				});
 				socket.emit('GET_CONVERSATIONS', {
-					data:r.FBConversations,
-					paging:{next:{
-						pid:pid,
-						before:r.FBConversations[r.FBConversations.length-1].updated_time,
-						limit:limit
-					}},
-					list_i:list_i
+					pid:q.pid,
+					data:r.FBConversations
 				});
 				console.log('======================== socket.on(GET_CONVERSATIONS) END =========================');				
 			}else{
-				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:pid});				
+				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:q.pid});				
 				throw new SequelizeNoResultError('FBConversation.findAll');
 			}
 		}).catch(function(err){
@@ -320,6 +313,7 @@ io.on('connection', function(socket) {
 			if(result && result.FBMessages && result.FBMessages.length>=1){
 				console.log('======================== 3 socket.emit(GET_MESSAGES) =========================');
 				r.FBMessages = result.FBMessages;
+				console.log(r.FBMessages.length);
 				socket.emit('GET_MESSAGES', {
 					Messages:r.FBMessages,
 					pid:q.pid
@@ -343,7 +337,6 @@ io.on('connection', function(socket) {
 		console.log('======================== socket.on(REFRESH_CONVERSATIONS) START =========================');
 
 		var q = {pid:data.pid};
-		var p = [];
 		var r = {};
 		/*
 		p[0] = sequelize.query(
@@ -359,6 +352,9 @@ io.on('connection', function(socket) {
 			LIMIT 100`,
 		  { replacements: { pid: pid }, type: sequelize.QueryTypes.SELECT }
 		);*/
+		var p = [];
+
+		console.log('======================== 1 FBConversation.findAll && getConversations =========================');		
 		p[0] = FBConversation.findAll({
 			where:{pid:q.pid},
 			order:[['updated_time','DESC']],
@@ -369,43 +365,53 @@ io.on('connection', function(socket) {
 		
 		Sequelize.Promise.all(p)
 		.spread(function(Instances,conversations){
-			var Conversations = conversations.data;
-			var FBConversations = Instances;
-			var ConversationsToUpdate = [];
-			var p = [];
+			if(Instances && conversations){
+				console.log('======================== 2 find ConversationsToUpdate =========================');		
+				var FBConversations = Instances;			
+				var Conversations = conversations.data;
+				var ConversationsToUpdate = [];
+				var p = [];
 
-			Conversations.map((Conversation,i)=>{
-				var FBConversation = FBConversations.find((x,i)=>(x.t_mid === Conversation.id));
+				Conversations.map((Conversation,i)=>{
+					var FBConversation = FBConversations.find((x,i)=>(x.t_mid === Conversation.id));
 
-				//console.log(moment(Conversation.updated_time).format('YYYY-MM-DD HH:mm:ss')+'  -  '+moment(FBConversation.updated_time).format('YYYY-MM-DD HH:mm:ss'));
-				//console.log(time_diff);
-				if(FBConversation){
-					var time_diff = moment(Conversation.updated_time).diff(moment(FBConversation.updated_time));
-					if(time_diff > 0){
+					//console.log(moment(Conversation.updated_time).format('YYYY-MM-DD HH:mm:ss')+'  -  '+moment(FBConversation.updated_time).format('YYYY-MM-DD HH:mm:ss'));
+					//console.log(time_diff);
+					if(FBConversation){
+						var time_diff = moment(Conversation.updated_time).diff(moment(FBConversation.updated_time));
+						if(time_diff > 0){
+							Conversation.t_mid = Conversation.id;
+							ConversationsToUpdate.push(Conversation);
+						}else if(time_diff === 0){
+							//DO NOTHING
+						}else{
+							winston.error('REFRESH_CONVERSATIONS, time_diff is negative');
+							throw new Error('REFRESH_CONVERSATIONS, time_diff is negative');
+						}
+					}else if(typeof FBConversation === 'undefined'){
 						Conversation.t_mid = Conversation.id;
 						ConversationsToUpdate.push(Conversation);
-					}else if(time_diff === 0){
-						//DO NOTHING
 					}else{
-						winston.error('REFRESH_CONVERSATIONS, time_diff is negative');
-						throw new Error('REFRESH_CONVERSATIONS, time_diff is negative');
+						winston.error('REFRESH_CONVERSATIONS');
+						throw new Error('REFRESH_CONVERSATIONS');
 					}
-				}else if(typeof FBConversation === 'undefined'){
-					Conversation.t_mid = Conversation.id;
-					ConversationsToUpdate.push(Conversation);
-				}else{
-					winston.error('REFRESH_CONVERSATIONS');
-					throw new Error('REFRESH_CONVERSATIONS');
-				}
-			});
+				});
 
-			ConversationsToUpdate.map((Conversation,i)=>{
-				p.push(upsertConversation(Conversation));
-			});
-			r.Conversations = ConversationsToUpdate;
+				console.log('======================== 3 upsertConversation * N =========================');		
+				ConversationsToUpdate.map((Conversation,i)=>{
+					p.push(upsertConversation(Conversation));
+				});
+				r.Conversations = ConversationsToUpdate;
 
-			return Sequelize.Promise.all(p);
+				return Sequelize.Promise.all(p);
+			}else{
+				winston.error('Error',{f:'FBConversation.findAll || getConversations',pid:q.pid});
+				throw new Error('FBConversation.findAll || getConversations')
+			}
 		}).then(function(unknown){
+			console.log(unknown);
+			console.log('======================== 4* socket.emit(REFRESH_CONVERSATIONS) =========================');
+			console.log(r.Conversations.length);
 			socket.emit('REFRESH_CONVERSATIONS',{
 				pid:q.pid,
 				Conversations:r.Conversations
