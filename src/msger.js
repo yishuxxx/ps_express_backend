@@ -1235,8 +1235,8 @@ function getConversations(cman_i, more) {
     if(filter.id_employee_engage_by){
       data.engage_by = filter.id_employee_engage_by;
     }
-    if(filter.id_labels && filter.id_labels.length >=1){
-      data.id_labels = filter.id_labels;
+    if(filter.label_ids && filter.label_ids.length >=1){
+      data.label_ids = filter.label_ids;
     }
 
     socket.emit('GET_CONVERSATIONS', data);

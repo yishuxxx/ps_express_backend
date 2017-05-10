@@ -296,7 +296,7 @@ io.on('connection', function(socket) {
 			before:typeof data.before !== 'undefined' ? moment.utc(data.before).format("YYYY-MM-DD HH:mm:ss") : moment.utc().format("YYYY-MM-DD HH:mm:ss"),
 			limit:typeof data.limit !== 'undefined' ? data.limit : 100,
 			engage_by:typeof data.engage_by !== 'undefined' ? data.engage_by : undefined,
-			id_labels:typeof data.id_labels !== 'undefined' ? data.id_labels : undefined
+			label_ids:typeof data.label_ids !== 'undefined' ? data.label_ids : undefined
 		};
 		var r = {};
 		var where = {pid:q.pid};
@@ -306,28 +306,45 @@ io.on('connection', function(socket) {
 		if(q.engage_by){
 			where.engage_by = q.engage_by;
 		}
+		var where_labels = {};
+		if(q.label_ids && q.label_ids.length >=1){
+			where_labels.label_id = {$in:q.label_ids};
+		}
+		console.log(where_labels);
 
 		(()=>{
 			return FBConversation.findAll({
 				where:where,
 				include:[{
-					model:FBLabel
-				}/*,{
-					model:FBMessage,
-					include:[{
-						model:FBAttachment
-					},{
-						model:Employee.scope('messenger')
-					}]
-				}*/],
-				order:[
-					['updated_time','DESC']
-				],
+					model:FBLabel,
+					where:where_labels
+				}],
 				limit:q.limit
 			}).then(sequelizeHandler)
 			.catch(sequelizeErrorHandler);		  
 		})()
 		.then(function(Instances){
+			if(Instances){
+				r.FBConversations = Instances;
+				var t_mids = r.FBConversations.map((FBConversation,i)=>(FBConversation.t_mid));
+				return FBConversation.findAll({
+					where:{t_mid:{$in:t_mids}},
+					include:[{
+						model:FBLabel
+					}/*,{
+						model:FBMessage,
+						include:[{
+							model:FBAttachment
+						},{
+							model:Employee.scope('messenger')
+						}]
+					}*/
+					],
+					order:[['updated_time','DESC']],
+				}).then(sequelizeHandler);
+
+			}
+		}).then(function(Instances){
 			if(Instances){
 				r.FBConversations = Instances;
 				r.FBConversations.map((FBConversation,i)=>{
