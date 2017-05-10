@@ -193,30 +193,26 @@ var reducer = function(state=Immutable([]),action=null){
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "pid"], pid);
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:Conversations});
       break;
-    case 'SELECT_FILTER_FBLABELS':
+    case 'CHANGE_FILTER':
       var pid = action.pid;
       var cman_i = action.cman_i;
       var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
       var Page = state.Pages[page_i];
       var Conversations = Page.Conversations;
 
-      var label_ids = action.label_ids;
-      state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "label_ids"], label_ids);
-      
-      var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
-      state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
-      break;
-    case 'SELECT_FILTER_ENGAGE_BY':
-      console.log(action);
-      var pid = action.pid;
-      var cman_i = action.cman_i;
-      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
-      var Page = state.Pages[page_i];
-      var Conversations = Page.Conversations;
-
-      var id_employee_engage_by = action.id_employee_engage_by;
-      state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "id_employee_engage_by"], id_employee_engage_by);
-
+      switch(action.filter_name){
+        case 'label_ids':
+          state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "label_ids"], action.filter_value);
+          break;
+        case 'id_employee_engage_by':
+          state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "id_employee_engage_by"], action.filter_value);
+          break;
+        case 'name':
+          state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "name"], action.filter_value);
+          break;
+        default:
+          break;
+      }
       var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       break;
@@ -487,28 +483,42 @@ class ConvLoadFilter extends Component{
     var label_ids = all_selected_options.map((x,i)=>(x.value));
     
     rstore.dispatch({
-      type:'SELECT_FILTER_FBLABELS',
+      type:'CHANGE_FILTER',
       pid: this.props.pid,
       cman_i:this.props.cman_i,
-      label_ids:label_ids
+      filter_name: 'label_ids',
+      filter_value: (label_ids ? label_ids : null)
+
     });
     rerender();
   }
 
   handleSelectEngageBy = (option) =>{    
     rstore.dispatch({
-      type:'SELECT_FILTER_ENGAGE_BY',
+      type:'CHANGE_FILTER',
       pid: this.props.pid,      
       cman_i:this.props.cman_i,
-      id_employee_engage_by: (option ? option.value : null)
+      filter_name: 'id_employee_engage_by',
+      filter_value: (option ? option.value : null)
     });
     rerender();
   }
 
+  handleChangeName = (event) =>{
+    rstore.dispatch({
+      type:'CHANGE_FILTER',
+      pid: this.props.pid,
+      cman_i:this.props.cman_i,
+      filter_name: 'name',
+      filter_value: (event.target.value ? event.target.value : "")
+    });
+    rerender();
+  }
+  /*
   handleSelectProductsAsked = (all_selected_options) =>{
     this.setState({products_asked:all_selected_options});
   }
-
+  */
   handleGetConversations = (event) => {
     var cman_i = this.props.cman_i;
     getConversations(cman_i);
@@ -536,6 +546,7 @@ class ConvLoadFilter extends Component{
     var label_ids = this.props.filter.label_ids;
     var id_employee_engage_by = this.props.filter.id_employee_engage_by;
     var Page = this.props.Pages.find((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+    var name = this.props.filter.name;
 
     return(
       <section className="ConvLoadFilter">
@@ -585,6 +596,12 @@ class ConvLoadFilter extends Component{
             multi={false}
           />
         </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Name :</span>
+          <input className="form-control" value={name} onChange={this.handleChangeName} />
+        </div>
+
         {/*
         <div className="input-group">
           <span className="input-group-addon input-group-sm">Until :</span>
@@ -1238,6 +1255,9 @@ function getConversations(cman_i, more) {
     if(filter.label_ids && filter.label_ids.length >=1){
       data.label_ids = filter.label_ids;
     }
+    if(filter.name && filter.name !== ""){
+      data.name = filter.name;
+    }
 
     socket.emit('GET_CONVERSATIONS', data);
     console.log('EMIT')
@@ -1405,6 +1425,19 @@ function filterConversations(Conversations,filter){
         return true;
       }
       if(Conversation.replied_last_by && (Conversation.replied_last_by === filter.id_employee_engage_by) ){
+        return true;
+      }
+      return false;
+    });
+  }
+
+  if(filter.name && filter.name !== ""){
+    Conversations = Conversations.filter((Conversation,i)=>{
+      console.log('$$$ NAME MATCHING');
+      console.log(Conversation.name.toLowerCase());
+      console.log(filter.name.toLowerCase());
+      console.log(Conversation.name.toLowerCase().indexOf( filter.name.toLowerCase()));
+      if(Conversation.name && (Conversation.name.toLowerCase().indexOf( filter.name.toLowerCase()) ) !== -1 ){
         return true;
       }
       return false;

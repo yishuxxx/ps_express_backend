@@ -290,13 +290,14 @@ io.on('connection', function(socket) {
 	});
 
 	socket.on('GET_CONVERSATIONS', function(data) {
-		console.log('======================== socket.on(GET_CONVERSATIONS) START =========================');
+		console.log('======================== socket.on(GET_CONVERSATIONS) =========================');
 		var q = {
 			pid:data.pid,
 			before:typeof data.before !== 'undefined' ? moment.utc(data.before).format("YYYY-MM-DD HH:mm:ss") : moment.utc().format("YYYY-MM-DD HH:mm:ss"),
 			limit:typeof data.limit !== 'undefined' ? data.limit : 100,
 			engage_by:typeof data.engage_by !== 'undefined' ? data.engage_by : undefined,
-			label_ids:typeof data.label_ids !== 'undefined' ? data.label_ids : undefined
+			label_ids:typeof data.label_ids !== 'undefined' ? data.label_ids : undefined,
+			name:typeof data.name !== 'undefined' ? data.name : undefined,
 		};
 		var r = {};
 		var where = {pid:q.pid};
@@ -306,11 +307,15 @@ io.on('connection', function(socket) {
 		if(q.engage_by){
 			where.engage_by = q.engage_by;
 		}
-		var where_labels = {};
+		if(q.name){
+			where.name = {$like:'%'+q.name+'%'};
+		}
+
 		if(q.label_ids && q.label_ids.length >=1){
+			var where_labels = {};
 			where_labels.label_id = {$in:q.label_ids};
 		}
-		console.log(where_labels);
+		console.log(where);
 
 		(()=>{
 			return FBConversation.findAll({
@@ -342,7 +347,9 @@ io.on('connection', function(socket) {
 					],
 					order:[['updated_time','DESC']],
 				}).then(sequelizeHandler);
-
+			}else{
+				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:q.pid});				
+				throw new SequelizeNoResultError('FBConversation.findAll');
 			}
 		}).then(function(Instances){
 			if(Instances){
@@ -364,12 +371,19 @@ io.on('connection', function(socket) {
 				throw new SequelizeNoResultError('FBConversation.findAll');
 			}
 		}).catch(function(err){
-			socket.emit('ERROR', {
-				error:err.name,
-				message:err.message,
-			});
-			winston.error('SequelizeNoResultError',{error:err});				
-			throw err;
+			if(err instanceof SequelizeNoResultError){
+				socket.emit('NO_DATA', {
+					error:err.name,
+					message:'No Conversations matches the filter'
+				});
+			}else{
+				socket.emit('ERROR', {
+					error:err.name,
+					message:err.message,
+				});
+				winston.error('SequelizeNoResultError',{error:err});				
+				throw err;
+			}
 		});
 	});
 
