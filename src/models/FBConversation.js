@@ -84,6 +84,30 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
+      },
+      "engage_by": {
+        "type": "INT(10) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "engage_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "replied_last_by": {
+        "type": "INT(10) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "replied_last_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
       }
     },{
         tableName:'fb_conversation',

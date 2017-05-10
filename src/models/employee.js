@@ -177,7 +177,16 @@ module.exports.EmployeeFunc = function(Sequelize,sequelize){
                     'id_last_customer',
                     'id_last_order'
                 ]
+            },
+            messenger:{
+                attributes:[
+                    'id_employee',
+                    'email',
+                    'lastname',
+                    'firstname'
+                ]
             }
+
         }
     });
 

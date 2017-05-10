@@ -169,3 +169,21 @@ function unique2DArray(array,fieldname){
 }
 
 module.exports.unique2DArray = unique2DArray;
+
+function arrayToObject (arr,id_name){
+  var obj = {};
+  arr.map((item,i)=>{
+    obj[item[id_name]] = item;
+  });
+  return obj;
+}
+module.exports.arrayToObject = arrayToObject;
+
+function arrayToKey (arr,id_name){
+  var output = [];
+  arr.map((item,i)=>{
+    output[i] = item[id_name];
+  });
+  return output;
+}
+module.exports.arrayToKey = arrayToKey;

@@ -53,7 +53,8 @@ const _COOKIE_KEY_ = settings._COOKIE_KEY_;
 var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_passwd, {
 	host: settings.db_host,
 	dialect: 'mysql',
-	logging: false,
+	logging: true,
+	benchmark: true,
 
 	pool: {
 		max: 5,
@@ -429,7 +430,7 @@ passport.deserializeUser(function(email, done) {
 	Employee.findOne({
 		where:{email: email}
 	}).then(function(Employee){
-		done(null, {email:Employee.email});
+		done(null, {id_employee:Employee.id_employee,email:Employee.email,lastname:Employee.lastname,firstname:Employee.firstname});
 	}).catch(function(err){
 		if (err) { return done(err); }
 	});
@@ -542,10 +543,14 @@ app.post('/login', function(req, res, next) {
 	    if(req.query.redirect){
 	    	res.redirect(req.query.redirect);
 	    }else{
-	    	res.redirect('/policies/privacy');
+	    	res.redirect(settings.base_dir+'/policies/privacy');
 	    }
 	}else if(!req.user){
-		res.redirect('/login?redirect='+req.query.redirect)
+	    if(req.query.redirect){
+	    	res.redirect(settings.base_dir+"/login?redirect="+req.query.redirect);
+	    }else{
+	    	res.redirect(settings.base_dir+"/login");
+	    }
 	}else{
 		res.send({success:false,message:'error after login'});
 	}
@@ -555,7 +560,11 @@ app.post('/login', function(req, res, next) {
 app.get('/logout',function(req,res,next){
     req.logout();
     req.session.destroy();
-    res.redirect("/login");
+    if(req.query.redirect){
+    	res.redirect(settings.base_dir+"/login?redirect="+req.query.redirect);
+    }else{
+    	res.redirect(settings.base_dir+"/login");
+    }
 });
 
 app.get('/policies/privacy',function(req,res){

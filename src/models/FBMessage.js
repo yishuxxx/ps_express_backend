@@ -96,6 +96,12 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
+      },
+      "id_employee": {
+        "type": "INT(10) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
       }
     },{
         tableName:'fb_message',
@@ -115,7 +121,8 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
                     'message',
                     'delivered_timestamp',
                     'delivered',
-                    'read_timestamp'
+                    'read_timestamp',
+                    'id_employee'
                 ]
             }
         },

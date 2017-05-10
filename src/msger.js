@@ -27,7 +27,8 @@ const initial_state = Immutable({
       last_reply_by : '',
       id_products_asked   : [],      
       id_products_bought  : [],
-      tags    : [],
+      label_ids    : [],
+      id_employee_engage_by : null,
       enquiry_times  : null
     }
   },{
@@ -40,7 +41,8 @@ const initial_state = Immutable({
       last_reply_by : '',
       id_products_asked   : [],      
       id_products_bought  : [],
-      tags    : [],
+      label_ids    : [1682923645256751],
+      id_employee_engage_by : null,
       enquiry_times  : null
     }
   }],
@@ -51,6 +53,10 @@ var reducer = function(state=Immutable([]),action=null){
   switch(action.type){
     case 'CONNECTION':
       state = Immutable.setIn(state,['connection_status'], action.connection_status);
+      break;
+    case 'GET_EMPLOYEES':
+      //action.Employees.unshift({id_employee:null})
+      state = Immutable.setIn(state, ["Employees"], action.Employees);
       break;
     case 'GET_LABELS_RESPONSE_SUCCESS':
       var pid = action.pid;
@@ -82,6 +88,10 @@ var reducer = function(state=Immutable([]),action=null){
       var Conversations = ( Page.Conversations && Page.Conversations.length>=1 ? Immutable.asMutable(Page.Conversations) : [] );
       var ConversationsLoaded = action.response.data;
 
+      Conversations = mergeConversations(Conversations,ConversationsLoaded,true,false);
+      Conversations.sort(dateCompare);
+
+      /*
       ConversationsLoaded.map((ConversationLoaded,i)=>{
         var index = Conversations.findIndex((x,i)=>(x.t_mid === ConversationLoaded.t_mid));
         if(index === -1){
@@ -90,12 +100,12 @@ var reducer = function(state=Immutable([]),action=null){
           Conversations[index] = ConversationLoaded;
         }
       });
+      */
 
       state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
       cman_is.map((cman_i,i)=>{
-        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
-          data:Conversations
-        });
+        var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       });
 
       break;
@@ -118,14 +128,11 @@ var reducer = function(state=Immutable([]),action=null){
       state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
 
       cman_is.map((cman_i,i)=>{
-        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
-          data:Conversations
-        });
+        var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       });
       break;
     case 'NEW_MESSAGE':
-      console.log(action);
-
       var pid = action.pid;
       var t_mid = action.t_mid;
       var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
@@ -172,10 +179,46 @@ var reducer = function(state=Immutable([]),action=null){
 
       state = Immutable.setIn(state, ["Pages",page_i,"Conversations"], Conversations);
       cman_is.map((cman_i,i)=>{
-        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {
-          data:Conversations
-        });
+        var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
+        state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       });
+      break;
+    case 'FILTER_PAGE':
+      var pid = action.pid;
+      var cman_i = action.cman_i;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var Conversations = Page.Conversations;
+
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "pid"], pid);
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:Conversations});
+      break;
+    case 'SELECT_FILTER_FBLABELS':
+      var pid = action.pid;
+      var cman_i = action.cman_i;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var Conversations = Page.Conversations;
+
+      var label_ids = action.label_ids;
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "label_ids"], label_ids);
+      
+      var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
+      break;
+    case 'SELECT_FILTER_ENGAGE_BY':
+      console.log(action);
+      var pid = action.pid;
+      var cman_i = action.cman_i;
+      var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+      var Page = state.Pages[page_i];
+      var Conversations = Page.Conversations;
+
+      var id_employee_engage_by = action.id_employee_engage_by;
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "id_employee_engage_by"], id_employee_engage_by);
+
+      var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       break;
     default:
       break;
@@ -223,6 +266,12 @@ class MessageManager extends Component{
     var pid = this.props.page_id;
     var t_mid = this.props.t_mid;
     sendReadReceipt(pid,t_mid);
+  }
+
+  handleEngageConversation = (event) =>{
+    var pid = this.props.page_id;
+    var t_mid = this.props.t_mid;
+    engageConversation(pid,t_mid);
   }
 
   handleGetMessages = (event) => {
@@ -355,7 +404,6 @@ class MessageManager extends Component{
                   message_or_attachment.push(<span key={attachment.id}>{'[ATTACHMENT='+attachment.attachment_id+']'}</span>);
                 }
               });
-
             }
 
             if(!(attachments && attachments.data && attachments.data.length >= 1) && !(Message.message) ){
@@ -372,7 +420,9 @@ class MessageManager extends Component{
                          ? moment.utc(Message.created_time).utcOffset(8).format('HH:mm') 
                          : moment.utc(Message.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')
                       */}
-                      {moment.utc(Message.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')}
+                      { moment.utc(Message.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')
+                        + (Message.Employee ? ' '+Message.Employee.firstname : '')
+                      }
                     </Tooltip>
                   }
                 >
@@ -385,7 +435,8 @@ class MessageManager extends Component{
           })}
         </section>
         <section>
-          <button className="btn btn-sm btn-primary" onClick={this.handleSendReadReceipt}>{"read"}</button>
+          <button className="btn btn-sm btn-primary" onClick={this.handleSendReadReceipt}>{"READ"}</button>
+          <button className="btn btn-sm btn-primary" onClick={this.handleEngageConversation}>{"ENGAGE"}</button>
         </section>
         <Row>
           <Col md={9}>
@@ -423,12 +474,35 @@ class ConvLoadFilter extends Component{
     };
   }
 
-  handleSelectRepliedBy = (all_selected_options) =>{
-    this.setState({replied_by:all_selected_options});
+  handleSelectPage = (option) =>{
+    rstore.dispatch({
+      type:'FILTER_PAGE',
+      cman_i:this.props.cman_i,
+      pid: (option ? option.value : null)
+    });
+    rerender();
   }
-  
-  handleSelectLastRepliedBy = (all_selected_options) =>{
-    this.setState({last_replied_by:all_selected_options});
+
+  handleSelectFBLabels = (all_selected_options) =>{
+    var label_ids = all_selected_options.map((x,i)=>(x.value));
+    
+    rstore.dispatch({
+      type:'SELECT_FILTER_FBLABELS',
+      pid: this.props.pid,
+      cman_i:this.props.cman_i,
+      label_ids:label_ids
+    });
+    rerender();
+  }
+
+  handleSelectEngageBy = (option) =>{    
+    rstore.dispatch({
+      type:'SELECT_FILTER_ENGAGE_BY',
+      pid: this.props.pid,      
+      cman_i:this.props.cman_i,
+      id_employee_engage_by: (option ? option.value : null)
+    });
+    rerender();
   }
 
   handleSelectProductsAsked = (all_selected_options) =>{
@@ -436,68 +510,87 @@ class ConvLoadFilter extends Component{
   }
 
   handleGetConversations = (event) => {
-    var cman_i = this.props.list_i;
+    var cman_i = this.props.cman_i;
     getConversations(cman_i);
   }
 
   handleGetMoreConversations = (event) => {
-    var cman_i = this.props.list_i;    
+    var cman_i = this.props.cman_i;    
     getConversations(cman_i,'MORE');
   }
 
   handleRefreshConversations = (event) => {
-    refreshConversations(this.props.list_i);
+    refreshConversations(this.props.cman_i);
+  }
+
+  handleSyncLabels = (event) => {
+    syncLabels(this.props.pid);
   }
 
   render() {
+    var Employees = this.props.Employees;
+    var Pages = this.props.Pages;
+    var cman_i = this.props.cman_i;
+    var pid = this.props.pid;
+    var FBLabels = this.props.FBLabels;
+    var label_ids = this.props.filter.label_ids;
+    var id_employee_engage_by = this.props.filter.id_employee_engage_by;
+    var Page = this.props.Pages.find((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
+
     return(
       <section className="ConvLoadFilter">
 
         <div className="input-group">
           <span className="input-group-addon input-group-sm">Page :</span>
-          <div className="btn-group">
-            <button type="button" className="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
-              Action <span className="caret"></span>
-            </button>
-            <ul className="dropdown-menu">
-              <li><a data-pid="1769068019987617">SY Online Venture</a></li>
-              <li><a data-pid="1825720017685240">SY Online Venture MY</a></li>
-            </ul>
-          </div>
-        </div>
-
-        <div className="input-group">
-          <span className="input-group-addon input-group-sm">Until :</span>
-          <ReactDatetime />
-        </div>
-
-        <div className="input-group">
-          <span className="input-group-addon input-group-sm">Replied:</span>
           <ReactSelect 
-            name="replied_by"
-            value={this.state.replied_by.map((item,i)=>(item.value)).join(',')}
-            options={[
-              { value: '1231123123', label: 'Yishu Foo' },
-              { value: '4564564564', label: 'Vermillion Ng' }
-            ]}
-            onChange={this.handleSelectRepliedBy} 
+            value={pid}
+            options={
+              Pages.map((Page,i)=>(
+                { value: Page.pid, label: Page.pid }
+              ))
+            }
+            onChange={this.handleSelectPage}
+            multi={false}
+          />
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Labels :</span>
+          <ReactSelect 
+            value={label_ids}
+            options={
+              (Page && Page.FBLabels)
+              ? Page.FBLabels.map((FBLabel,i)=>(
+                { value: FBLabel.label_id, label: FBLabel.name }
+              ))
+              : []
+            }
+            onChange={this.handleSelectFBLabels}
             multi={true}
           />
         </div>
 
         <div className="input-group">
-          <span className="input-group-addon input-group-sm">Last :</span>
+          <span className="input-group-addon input-group-sm">Engage :</span>
           <ReactSelect 
-            name="last_replied_by"
-            value={this.state.last_replied_by ? this.state.last_replied_by.value : ''}
-            options={[
-              { value: '1231123123', label: 'Yishu Foo' },
-              { value: '4564564564', label: 'Vermillion Ng' }
-            ]}
-            onChange={this.handleSelectLastRepliedBy} 
+            value={id_employee_engage_by}
+            options={
+              (Employees)
+              ? Employees.map((Employee,i)=>(
+                  { value: Employee.id_employee, label: Employee.firstname }
+                ))
+              : []
+            }
+            onChange={this.handleSelectEngageBy}
             multi={false}
           />
         </div>
+        {/*
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Until :</span>
+          <ReactDatetime />
+        </div>
+
 
         <div className="input-group">
           <span className="input-group-addon input-group-sm">Asked :</span>
@@ -512,10 +605,12 @@ class ConvLoadFilter extends Component{
             multi={true}
           />
         </div>
-
+        */}
         <button className="btn btn-primary" onClick={this.handleGetConversations}>Load</button>
         <button className="btn btn-default" onClick={this.handleGetMoreConversations}>More</button>
         <button className="btn btn-warning" onClick={this.handleRefreshConversations}>Refresh</button>
+        <button className="btn btn-warning" onClick={this.handleSyncLabels}>Sync Labels</button>
+
 
       </section>
     );
@@ -552,7 +647,7 @@ class ConversationCard extends Component{
     super(props,context);
     this.state = {highlight:false,show_more_messages:false}; 
   }
-
+/*
   handleHighlight = (event) => {
     event.stopPropagation();
     if(event.shiftKey){
@@ -574,7 +669,7 @@ class ConversationCard extends Component{
     event.stopPropagation();
     this.setState({show_more_messages:true});
   }
-
+*/
   handleDisplayMessages = (event) => {
     var pid = this.props.pid;
     var t_mid = this.props.Conversation.t_mid;
@@ -615,6 +710,20 @@ class ConversationCard extends Component{
               </span>
             </div>
 
+            <span className="label label-success engage_box">
+            {this.props.Conversation.engage_by
+              ? this.props.Conversation.engage_by+' '+moment(this.props.Conversation.engage_time).format('HH:mm:ss')
+              : null
+            }
+            </span>
+
+            <span className="label label-info last_replied_box">
+            {this.props.Conversation.replied_last_by
+              ? this.props.Conversation.replied_last_by+' '+moment(this.props.Conversation.replied_last_time).format('HH:mm:ss')
+              : null
+            }
+            </span>
+
             <span className="label_box">
             {this.props.Conversation.FBLabels && this.props.Conversation.FBLabels.length>=1
               ? this.props.Conversation.FBLabels.map((FBlabel,i)=>(
@@ -623,14 +732,9 @@ class ConversationCard extends Component{
               : null
             }
             </span>
-            <span className="message" onClick={this.handleShowMoreMessages}>
-              {
-                this.state.show_more_messages 
-                ? (messages.map((message,i)=>(
-                    <div key={message.id}>{message.attachment_id ? '[ATTACHMENT]' : message.message}</div>
-                  )))
-                : <div className="snippet">{this.props.Conversation.snippet ? this.props.Conversation.snippet : '[ IMAGE | STICKER ? ]'}</div>
-              }
+
+            <span className="message">
+                <div className="snippet">{this.props.Conversation.snippet ? this.props.Conversation.snippet : '[ IMAGE | STICKER ? ]'}</div>
             </span>
           </Col>
         </Row>
@@ -774,12 +878,11 @@ class ConversationManager extends Component{
 
     return(
       <section className="ConversationManager">
-
         <Row>
           <Col md={6}>
 
             <Accordion title='Filter'>
-              <ConvLoadFilter list_i={this.props.list_i} />
+              <ConvLoadFilter Employees={this.props.Employees} Pages={this.props.Pages} filter={this.props.ConvManager.filter} cman_i={this.props.cman_i} pid={this.props.ConvManager.pid} />
             </Accordion>
 
             <div className="ConversationList">
@@ -853,13 +956,17 @@ class MessengerApp extends Component{
             : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
         </div>
 
+        <a href={'/api1/logout'}>Logout</a>
+
         <Row>
           <Col md={6}>
             {
               this.props.state.ConvManagers && this.props.state.ConvManagers[0]
               ? <ConversationManager
+                  Employees={this.props.state.Employees}
+                  Pages={this.props.state.Pages}
                   ConvManager={this.props.state.ConvManagers[0]}
-                  list_i={0}
+                  cman_i={0}
                 />
               : null
             }
@@ -868,8 +975,10 @@ class MessengerApp extends Component{
             {
               this.props.state.ConvManagers && this.props.state.ConvManagers[1]
               ? <ConversationManager
+                  Employees={this.props.state.Employees}
+                  Pages={this.props.state.Pages}
                   ConvManager={this.props.state.ConvManagers[1]}
-                  list_i={1}
+                  cman_i={1}
                 />
               : null
             }
@@ -910,6 +1019,17 @@ socket.on('login', function (data) {
   //addParticipantsMessage(data);
   console.log(message);
 });
+
+socket.on('GET_EMPLOYEES', function (data) {
+  console.log('ON');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_EMPLOYEES',
+    Employees:data.Employees,
+  });
+  rerender();
+});
+
 
 socket.on('GET_LABELS', function (data) {
   console.log('ON');
@@ -956,9 +1076,14 @@ socket.on('REFRESH_CONVERSATIONS', function (data) {
   rerender();
 });
 
+socket.on('SYNC_LABELS', function (data) {
+  console.log('ON');
+  console.log(data);
+});
+
 // Whenever the server emits 'new message', update the chat body
 socket.on('new message', function (data) {
-  if(true){
+  if(true){//parseInt(data.pid,10) !== 1769068019987617
     console.log('ON');
     if(data.Message && data.Message.message){
       console.log('message='+data.Message.message);
@@ -1081,20 +1206,39 @@ function sendReadReceipt(pid,t_mid){
   }
 }
 
+function engageConversation(pid,t_mid){
+  if (connected) {
+    var data = { 
+      pid:pid,
+      t_mid:t_mid
+    };
+    socket.emit('ENGAGE_CONVERSATION', data);
+    console.log('EMIT')
+    console.log(data);
+  }
+}
+
 function getConversations(cman_i, more) {
   var state = rstore.getState();
   var pid = state.ConvManagers[cman_i].pid;
   var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
   var Page = state.Pages[page_i];
+  var filter = state.ConvManagers[cman_i].filter;
 
   if (connected) {
+    var data = {pid:pid};
+
     if(more === 'MORE'){
-      var before = Page.Conversations[Page.Conversations.length-1].updated_time;
-      var limit = 100;
-      var data = {pid:pid,before:before,limit:limit};
-    }else{
-      var data = {pid:pid};
+      data.before = Page.Conversations[Page.Conversations.length-1].updated_time;
+      data.limit = 100;
     }
+    if(filter.id_employee_engage_by){
+      data.engage_by = filter.id_employee_engage_by;
+    }
+    if(filter.id_labels && filter.id_labels.length >=1){
+      data.id_labels = filter.id_labels;
+    }
+
     socket.emit('GET_CONVERSATIONS', data);
     console.log('EMIT')
     console.log(data);
@@ -1135,6 +1279,14 @@ function updateConversationLabels(pid,t_mid,labels){
       t_mid:t_mid,
       labels:labels
     })
+  }
+}
+
+function syncLabels(pid){
+  if (connected) {
+    socket.emit('SYNC_LABELS', { 
+      pid:pid
+    });
   }
 }
 
@@ -1211,9 +1363,61 @@ function dateCompareMessage(a, b){
   return 0;
 }
 
+function filterConversations(Conversations,filter){
+  console.log('$$$$ FILTER STARTS');
+  console.log(Conversations.length);
+  console.log(filter);
+  if(filter.label_ids && filter.label_ids.length >=1){
+    console.log(filter.label_ids);
+    Conversations = Conversations.filter((Conversation,i)=>{
+      if(Conversation.FBLabels && Conversation.FBLabels.length>=1){
+        var full_match = true;
+        filter.label_ids.map((label_id,j)=>{
+          var index = Conversation.FBLabels.findIndex((FBLabel,k)=>(parseInt(FBLabel.label_id,10) === parseInt(label_id,10)));
+          if(index === -1){
+            full_match = false;
+          }
+        });
+        return full_match;
+      }else{
+        return false;
+      }
+    });
+  }
+  /*
+  if(filter.id_employee_engage_by){
+    console.log(filter.id_employee_engage_by);
+    Conversations = Conversations.filter((Conversation,i)=>{
+      if(Conversation.engage_by && Conversation.engage_time){
+        if(Conversation.engage_by === filter.id_employee_engage_by){
+          return true;
+        }
+      }
+      return false;
+    });
+  }
+  */
+
+  if(filter.id_employee_engage_by){
+    console.log(filter.id_employee_engage_by);
+    Conversations = Conversations.filter((Conversation,i)=>{
+      if(Conversation.engage_by && (Conversation.engage_by === filter.id_employee_engage_by) ){
+        return true;
+      }
+      if(Conversation.replied_last_by && (Conversation.replied_last_by === filter.id_employee_engage_by) ){
+        return true;
+      }
+      return false;
+    });
+  }
+
+  return Conversations;
+}
+
 window.rerender  = rerender;
 window.moment = moment;
 window.rstore = rstore;
 window.Immutable = Immutable;
+socket.emit('GET_EMPLOYEES',{});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});
