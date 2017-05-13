@@ -3,6 +3,7 @@ let router = express.Router();
 let moment = require('moment');
 let {randomString,unique2DArray} = require('../src/Utils/Helper');
 let {FBGraphAPIStandardError, FBGraphAPIError, FBGraphAPINoResultError, SequelizeError, SequelizeNoResultError} = require('../src/Utils/Error');
+var fs = require('fs');
 
 this.router = router;
 
@@ -13,15 +14,10 @@ router.use('/',function (req, res, next) {
 	next()
 });
 */
-
+const BASEDIR_IMAGE = './data/image/';
 const APP_SECRET = 'cf682be6c2942e8af05c7a5ea13ce065';
 // Arbitrary value used to validate a webhook
 const VALIDATION_TOKEN = 'TheOneAndOnlyToken';
-// Generate a page access token for your page from the App Dashboard
-//const PAGE_ACCESS_TOKEN = 'EAAIrWVlswogBADzmkKyItbSX4WsQQZBhVcHXcocwCapgLZAZCIAm6jlTcJE3Ay0cVBxpjZAs2CMfWf1mMcgXRfxrUaN8ai5JYz6VKU769qZBnS5SLZBNUki31bm2rxWZBOfZCGUT6UPXZBZAEULve2U67n4vbbt5E4kEw3P6kT0mx27gZDZD';
-
-// URL where the app is running (include protocol). Used to point to scripts and
-// assets located at this address.
 const SERVER_URL = 'https://www.sy.com.my/api/msg/';
 /*
 if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
@@ -29,8 +25,6 @@ if (!(APP_SECRET && VALIDATION_TOKEN && PAGE_ACCESS_TOKEN && SERVER_URL)) {
 	process.exit(1);
 }
 */
-// var {FBUserFunc} = require('.src/models/FBUser');
-// var FBUser = FBUserFunc(Sequelize,sequelize);
 
 let {EmployeeFunc} = require('../src/models/employee');
 let Employee = EmployeeFunc(Sequelize, sequelize);
@@ -49,6 +43,8 @@ let {FBLabelFunc} = require('../src/models/FBLabel');
 let FBLabel = FBLabelFunc(Sequelize, sequelize);
 let {FBConversationLabelFunc} = require('../src/models/FBConversationLabel');
 let FBConversationLabel = FBConversationLabelFunc(Sequelize, sequelize);
+let {FBUploadFunc} = require('../src/models/FBUpload');
+let FBUpload = FBUploadFunc(Sequelize, sequelize);
 
 FBConversation.hasMany(FBMessage, {foreignKey:'t_mid'});
 FBMessage.belongsTo(FBConversation, {foreignKey:'t_mid'});
@@ -85,8 +81,6 @@ io.on('connection', function(socket) {
 
 	socket.on('GET_EMPLOYEES', function(data) {
 		console.log('======================== socket.on(GET_EMPLOYEES) =========================');
-		var q = {pid:data.pid};
-
 		(()=>{
 			return Employee.scope('messenger').findAll()
 			.then(sequelizeHandler);
@@ -100,6 +94,31 @@ io.on('connection', function(socket) {
 			}else{
 				winston.error('SequelizeNoResultError',{message:'No Employees Available'});
 				throw new SequelizeNoResultError('No Employees Available');
+			}
+		}).catch(function(err){
+			socket.emit('ERROR', {
+				error:err.name,
+				message:err.message,
+			});
+		});
+	});
+
+	socket.on('GET_UPLOADS', function(data) {
+		console.log('======================== socket.on(GET_UPLOADS) =========================');
+
+		(()=>{
+			return FBUpload.findAll()
+			.then(sequelizeHandler);
+		})()
+		.then(function(Instances){
+			if(Instances){
+				console.log('======================== socket.emit(GET_EMPLOYEES) =========================');
+				socket.emit('ADD_FILES', {
+					FBUploads:Instances
+				});
+			}else{
+				winston.error('SequelizeNoResultError',{message:'No Files Available'});
+				throw new SequelizeNoResultError('No Files Available');
 			}
 		}).catch(function(err){
 			socket.emit('ERROR', {
@@ -289,6 +308,70 @@ io.on('connection', function(socket) {
 		})
 	});
 
+	socket.on('SYNC_CONVERSATIONS',function(data){
+
+		let pid = data.pid;
+		let PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[pid];
+		let last_message_date = moment(data.last_message_date);
+		let result = {};
+
+		var count_conv = 0;
+		var count_msg = 0;
+
+		new Sequelize.Promise(function(resolve, reject) {
+			let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
+			let qs = {
+				access_token: PAGE_ACCESS_TOKEN,
+				fields: 'link,id,message_count,snippet,updated_time,unread_count,participants',
+				limit: 100,
+			};
+
+			// start first iteration of the loop
+			nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
+				let list = response.data;
+				list.map((item, i)=>{
+					let tmp = last_message_date.diff(moment(item.updated_time), 'seconds');
+					i === 0 ? console.log(item.updated_time+'___'+tmp + '___' + (tmp >= 0)) : null;
+					if(last_message_date.diff(moment(item.updated_time), 'seconds') >= 0) {
+						r.continue = false;
+					}
+				});
+				result = r;
+				return r;
+			});
+		}).then(function(r) {
+			return Sequelize.Promise.mapSeries(r.data,function(Conversation){
+				return FBConversation.upsert({
+						pid: Conversation.participants.data[1].id,
+						uid: Conversation.participants.data[0].id,
+						pid_uid: Conversation.participants.data[1].id+'_'+Conversation.participants.data[0].id,
+						t_mid: Conversation.id,
+						psid: null,
+						updated_time: Conversation.updated_time,
+						link: Conversation.link,
+						name: Conversation.participants.data[0].name,
+						snippet:	Conversation.snippet,
+						message_count: Conversation.message_count,
+						unread_count: Conversation.unread_count,
+					}, {
+						where: {
+							t_mid: Conversation.id,
+						},
+					}
+				)
+			});
+		}).then(function(Instances){
+			socket.emit('SYNC_CONVERSATIONS',{success: true});
+		}).catch(function(err){
+			if(err instanceof Error){
+				winston.error(err.err.name,{error:err});
+				socket.emit('ERROR',{error:err.name,message: err.message});
+			}
+		});
+
+
+	});
+
 	socket.on('GET_CONVERSATIONS', function(data) {
 		console.log('======================== socket.on(GET_CONVERSATIONS) =========================');
 		var q = {
@@ -324,6 +407,7 @@ io.on('connection', function(socket) {
 					model:FBLabel,
 					where:where_labels
 				}],
+				order:[['updated_time','DESC']],
 				limit:q.limit
 			}).then(sequelizeHandler)
 			.catch(sequelizeErrorHandler);		  
@@ -534,15 +618,17 @@ io.on('connection', function(socket) {
 		console.log('EMPLOYEE='+socket.request.user.email);
 
 		var r = data;
+		console.log(r);
+
 		(()=>{
 			return FBConversation.findOne({
 				where: {t_mid: r.t_mid},
-			}).then(sequelizeHandler)
-			.catch(sequelizeErrorHandler);		
+			}).then(sequelizeHandler);		
 		})()
 		.then(function(Instance) {
 			if(Instance) {
 				r.FBConversation = Instance;
+				console.log(r.FBConversation.psid);
 				r.psid = r.FBConversation.psid ? r.FBConversation.psid : null;
 			}
 
@@ -556,6 +642,22 @@ io.on('connection', function(socket) {
 						message: {
 							text: r.message,
 							metadata: 'DEVELOPER_DEFINED_METADATA',
+						},
+					};
+					break;
+				case 'image':
+					var url = settings.SERVER_URL + settings.base_dir+"/msg/media/"+r.filenames[0];
+					message_data = {
+						recipient: {
+							id: r.psid,
+						},
+						message: {
+							attachment: {
+								type: "image",
+								payload: {
+									url: url
+								}
+							}
 						},
 					};
 					break;
@@ -591,6 +693,74 @@ io.on('connection', function(socket) {
 			throw err;
 		})
 	});
+
+	socket.on('ADD_FILES',function(data){
+		console.log('======================== socket.on(ADD_FILE) =========================');
+		var file_buffers = data.file_buffers;
+		var file_infos = data.file_infos;
+
+		file_buffers.map((file_buffer,i)=>{
+			//var file_buffer = data.file_buffer[0];
+			console.log('======================== FILE_BUFFER =========================');
+			console.log(file_buffer);
+			console.log(file_buffer.length);
+			console.log(file_infos[0].name);
+			console.log(file_infos.length);
+			var file_info = file_infos[i];
+			var length = file_info.name.length;
+			file_info.filename = randomString('16','#a')+'.'+file_info.name.substring(length-3,length);
+			var stream = fs.createWriteStream(BASEDIR_IMAGE+file_info.filename);
+			stream.once('open', function(fd) {
+			  stream.write(file_buffer);
+			  stream.end();
+			});
+		});
+
+		Sequelize.Promise.mapSeries(file_infos,function(file_info,i){
+			return FBUpload.create({
+				name:file_info.name,
+				type:file_info.type,
+				filename:file_info.filename,
+				created_by:socket.request.user.id_employee
+			});
+		}).then(function(Instances){
+			if(Instances){
+				FBUploads = Instances;
+				socket.emit('ADD_FILES',{FBUploads:FBUploads});
+			}
+		});
+	});
+
+	socket.on('DELETE_FILES',function(data){
+		console.log('======================== socket.on(DELETE_FILES) =========================');
+		var filenames = data.filenames;
+		var filepaths = [];
+		filenames.map((filename,i)=>{
+			filepaths.push(BASEDIR_IMAGE+filename)
+		});
+
+		function unlinkFiles(filepaths){
+			fs.unlink(filepaths[0], function(err){
+			    if(err) {
+			    	winston.error(err.name,{error:err});
+			    	throw err;
+			    } else {
+			    	console.log('======================== '+filepaths[0]+' DELETED =========================');
+					unlinkFiles(filepaths.shift());
+			    }
+			});
+		}
+
+		Sequelize.Promise.mapSeries(filenames,function(filename,i){
+			return FBUpload.destroy({where:{filename:filename}});
+		}).then(function(unknown){
+			if(unknown){
+				socket.emit('DELETE_FILES',{filenames:filenames});
+			}
+		});
+	});
+
+
 
 	// when the client emits 'add user', this listens and executes
 	socket.on('add user', function(username) {
@@ -1149,6 +1319,30 @@ router.post('/pm', function(req, res) {
 		throw err;
 	})
 	*/
+});
+
+router.get('/media/:filename',function(req,res){
+  var options = {
+    root: __dirname + '/../data/image/',
+    dotfiles: 'deny',
+    headers: {
+        'x-timestamp': Date.now(),
+        'x-sent': true
+    }
+  };
+ console.log(options.root);
+console.log(file_name);
+  var file_name = req.params.filename;
+  res.sendFile(file_name, options, function (err) {
+  	console.log('Sent:', file_name);
+  	/*
+    if (err) {
+      next(err);
+    } else {
+      console.log('Sent:', file_name);
+    }
+    */
+  });
 });
 
 /*
@@ -2359,10 +2553,20 @@ function createConversation(Conversation,psid){
 
 function syncLabels(PAGE_ACCESS_TOKEN, pid){
 	var r = {};
-
-	return FBLabel.destroy({
-		where: {pid: pid}
-	}).then(function(rows_deleted){
+	return FBLabel.findAll({where:{pid:pid}})
+	.then(function(Instances){
+		var label_ids = Instances.map((x,i)=>(x.label_id));
+		console.log('FBLabel.findAll({where:{pid:pid}}).length'+Instances.length);
+		return Sequelize.Promise.all([
+			FBLabel.destroy({
+				where: {pid: pid}
+			}),
+			FBConversationLabel.destroy({
+				where: {label_id: {$in:label_ids}}
+			})
+		]);
+	}).spread(function(rows_deleted,rows_deleted2){
+		console.log('finish destroying');
 		return getPageLabels(PAGE_ACCESS_TOKEN,{limit:100});
 	}).then(function(Labels){
 		if(Labels && Labels.length>=1){

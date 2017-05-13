@@ -1,7 +1,7 @@
 //import {settings} from '../settings';
 //import _ from 'lodash';
 import React, {Component} from 'react';
-import {render} from 'react-dom';
+import {render,findDOMNode} from 'react-dom';
 import { createStore } from 'redux';
 import { Grid, Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
 import moment from 'moment';
@@ -11,39 +11,41 @@ import ReactDatetime from 'react-datetime';
 import ReactSelect from 'react-select';
 import {randomString} from './Utils/Helper';
 
+const BASEDIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
 const initial_state = Immutable({
   connection:'',
+  Uploads:[],
   Pages:[
-    {pid:1769068019987617,Conversations:[]},
-    {pid:1661200044095778,Conversations:[]}
+    {pid:1769068019987617,name:'SY Online Venture',Conversations:[]},
+    {pid:1661200044095778,name:'SY代购',Conversations:[]}
   ],
   ConvManagers:[{
     pid     : 1769068019987617,
     Conversations:{data:[]},
     filter:{
-      before  : moment().format('YYYY-MM-DD HH:mm:ss'),
-      limit   : 100,
-      replied_by    : [],
-      last_reply_by : '',
-      id_products_asked   : [],      
-      id_products_bought  : [],
+      //before  : moment().format('YYYY-MM-DD HH:mm:ss'),
+      //limit   : 100,
+      //last_reply_by : '',
+      //id_products_asked   : [],      
+      //id_products_bought  : [],
       label_ids    : [],
       id_employee_engage_by : null,
-      enquiry_times  : null
+      name:'',
+      //enquiry_times  : null
     }
   },{
-    pid     : 1661200044095778,
+    pid     : 1769068019987617,
     Conversations:{data:[]},
     filter:{
-      before  : moment().format('YYYY-MM-DD HH:mm:ss'),
-      limit   : 100,
-      replied_by    : [],
-      last_reply_by : '',
-      id_products_asked   : [],      
-      id_products_bought  : [],
-      label_ids    : [1682923645256751],
+      //before  : moment().format('YYYY-MM-DD HH:mm:ss'),
+      //limit   : 100,
+      //last_reply_by : '',
+      //id_products_asked   : [],      
+      //id_products_bought  : [],
+      label_ids    : [],
       id_employee_engage_by : null,
-      enquiry_times  : null
+      name:'',
+      //enquiry_times  : null
     }
   }],
 });
@@ -70,9 +72,6 @@ var reducer = function(state=Immutable([]),action=null){
       }, []);
 
       state = Immutable.setIn(state, ["Pages", page_i, "FBLabels"], action.FBLabels);
-      cman_is.map((cman_i,i)=>{
-        state = Immutable.setIn(state, ["ConvManagers", cman_i, "FBLabels"], action.FBLabels);
-      });
       break;
     case 'GET_CONVERSATIONS_RESPONSE_SUCCESS':
       var pid = action.pid;
@@ -109,6 +108,7 @@ var reducer = function(state=Immutable([]),action=null){
       });
 
       break;
+
     case 'REFRESH_CONVERSATIONS':
       var pid = action.pid;
       var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
@@ -132,6 +132,7 @@ var reducer = function(state=Immutable([]),action=null){
         state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       });
       break;
+
     case 'NEW_MESSAGE':
       var pid = action.pid;
       var t_mid = action.t_mid;
@@ -143,6 +144,7 @@ var reducer = function(state=Immutable([]),action=null){
               a.push(i);
           return a;
       }, []);
+      var is_tmp = typeof action.is_tmp !== 'undefined' ? action.is_tmp : false;
 
       var Conversations = Page.Conversations;
       //var ConvManagers = state.ConvManagers;
@@ -156,13 +158,20 @@ var reducer = function(state=Immutable([]),action=null){
         var Messages = Immutable.asMutable(Conversations[conv_i].messages.data);
       }
 
+      //REMOVE TMP MESSAGE
+      if(is_tmp === false){
+        var index_tmp_msg = Messages.findIndex((x,i)=>(typeof x.m_mid === 'undefined'));
+        Messages.splice(index_tmp_msg,1);
+      }
+
       //MERGE OLD AND NEW MESSAGE
       if(action.Message){
-          Messages = mergeMessages(Messages,[action.Message],true);
+          Messages = mergeMessages(Messages,[action.Message],true,is_tmp);
       }
       if(action.Messages){
-          Messages = mergeMessages(Messages,action.Messages,false);
+          Messages = mergeMessages(Messages,action.Messages,false,is_tmp);
       }
+
       Messages.sort(dateCompareMessage);
 
       //REPLACE MESSAGES IN CONVERSATION, CHOOSE OLD/NEW CONVERSATION DEPENDING ON CRITERIA
@@ -183,6 +192,7 @@ var reducer = function(state=Immutable([]),action=null){
         state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       });
       break;
+
     case 'FILTER_PAGE':
       var pid = action.pid;
       var cman_i = action.cman_i;
@@ -193,6 +203,7 @@ var reducer = function(state=Immutable([]),action=null){
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "pid"], pid);
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:Conversations});
       break;
+
     case 'CHANGE_FILTER':
       var pid = action.pid;
       var cman_i = action.cman_i;
@@ -216,6 +227,33 @@ var reducer = function(state=Immutable([]),action=null){
       var ConversationsFiltered = filterConversations(Conversations,state.ConvManagers[cman_i].filter);        
       state = Immutable.setIn(state, ["ConvManagers", cman_i, "Conversations"], {data:ConversationsFiltered});
       break;
+    /*
+    case 'SELECT_FILES':
+      var cman_i = action.cman_i;
+      var files = action.files;
+      var file_buffers = action.file_buffers;
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "files"], files);
+      state = Immutable.setIn(state, ["ConvManagers", cman_i, "file_buffers"], file_buffers);
+      break;
+    */
+    case 'ADD_FILES':
+      var UploadsLoaded = action.Uploads;
+      var Uploads = Immutable.asMutable(state.Uploads);
+
+      Uploads = mergeUploads(Uploads,UploadsLoaded);
+      state = Immutable.setIn(state, ["Uploads"], Uploads);
+      break;
+
+    case 'DELETE_FILES':
+      var filenames = action.filenames;
+      var Uploads = Immutable.asMutable(state.Uploads);
+      Uploads = Uploads.filter((Upload,i)=>{
+        return filenames.indexOf(Upload.filename) === -1;
+      });
+      //Uploads = mergeUploads(Uploads,UploadsLoaded);
+      state = Immutable.setIn(state, ["Uploads"], Uploads);
+      break;
+
     default:
       break;
   }
@@ -226,11 +264,24 @@ var rstore = createStore(reducer,initial_state);
 class MessageManager extends Component{
   constructor(props,context) {
     super(props,context);
-    //this.state = {message_create:''};
+    //this.state = {has_message:false};
+    this.state = {auto_scroll_locked:false};
+  }
+
+  componentDidMount() {
+      const messageList = findDOMNode(this.messageList)
+      messageList.addEventListener('scroll', this._handleScroll);
+  }
+
+  componentWillUnmount() {
+      const messageList = findDOMNode(this.messageList)
+      messageList.removeEventListener('scroll', this._handleScroll);
   }
 
   componentDidUpdate() {
-    this.scrollToBottom();
+    if(!this.state.auto_scroll_locked){
+      this.scrollToBottom();
+    }
   }
   /*
   handleConversationMessageChange = (event) => {
@@ -240,9 +291,10 @@ class MessageManager extends Component{
   handleConversationMessageSubmit = (event) => {
     var t_mid = this.props.t_mid;
     var pid = this.props.page_id;
+    var cman_i = this.props.cman_i;
     var message = this.message_create.value;
 
-    sendMessage(pid,t_mid,message);
+    sendMessage(pid,cman_i,t_mid,message);
     //this.setState({message_create:''});
     this.message_create.value = '';
 
@@ -257,7 +309,15 @@ class MessageManager extends Component{
     rerender();
     */
   }
-
+  /*
+  handleChangeMessage = (event) =>{
+    if(event.target.value !== ''){
+      this.setState({has_message:true});
+    }else{
+      this.setState({has_message:false});
+    }
+  }
+  */
   handleSendReadReceipt = (event) =>{
     var pid = this.props.page_id;
     var t_mid = this.props.t_mid;
@@ -296,6 +356,20 @@ class MessageManager extends Component{
     updateConversationLabels(pid,t_mid,all_selected_options);
   }
 
+  handleScroll = (event) =>{
+    var scrollTop = event.target.scrollTop;//event.target.scrollTop
+    var scrollHeight = this.messageList.scrollHeight;
+    var clientHeight = this.messageList.clientHeight;
+    var is_bottom = (scrollTop+clientHeight) === scrollHeight;
+    if(is_bottom){
+      this.setState({auto_scroll_locked:false});
+    }else{
+      this.setState({auto_scroll_locked:true});
+    }
+    console.log(event.target);
+    console.log(scrollTop+'-'+scrollHeight+'-'+clientHeight+'-'+is_bottom);
+  }
+
   scrollToBottom() {
     const scrollHeight = this.messageList.scrollHeight;
     const height = this.messageList.clientHeight;
@@ -315,9 +389,10 @@ class MessageManager extends Component{
         <section className="ConversationOptions">
           <div className="MessageLoaderButtons">
             <div className="btn-group" role="group">
-              <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(message_count-Messages.length)}</button>
+              <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(Messages.length+'/'+message_count)}</button>
               <button className="btn btn-sm btn-default" onClick={this.handleGetMessagesForceRefresh}><span className="glyphicon glyphicon-refresh"></span></button>
             </div>
+            <span className="CustomerName">{this.props.ConversationC.name}</span>
           </div>
           {this.props.ConversationC.FBLabels ?
             <div className="LabelSelector">
@@ -332,7 +407,7 @@ class MessageManager extends Component{
           }
         </section>
         <div style={{clear:'both'}}></div>
-        <section className="messages_list" ref={(div) => {this.messageList = div;}}>
+        <section className="messages_list" ref={(div) => {this.messageList = div;}} onScroll={this.handleScroll}>
           {Messages.map((x,index)=>{
             var Message = Messages[Messages.length - 1 - index];
             var message_from = (Message.from.id == page_id) ? " self" : " other";
@@ -407,7 +482,7 @@ class MessageManager extends Component{
             }
 
             return (
-              <div key={Message.id} className={"message_wrapper"+message_from} >
+              <div key={Message.id ? Message.id : 'tmp_message'} className={"message_wrapper"+message_from} >
                 <OverlayTrigger 
                   placement={message_left_right} 
                   overlay={
@@ -431,25 +506,30 @@ class MessageManager extends Component{
           })}
         </section>
         <section>
-          <button className="btn btn-sm btn-primary" onClick={this.handleSendReadReceipt}>{"READ"}</button>
-          <button className="btn btn-sm btn-primary" onClick={this.handleEngageConversation}>{"ENGAGE"}</button>
+          <button className="btn btn-sm btn-default" onClick={this.handleSendReadReceipt}>{"READ"}</button>
+          <button className="btn btn-sm btn-default" onClick={this.handleEngageConversation}>{"ENGAGE"}</button>
+          <UploadManager 
+            pid={this.props.page_id}
+            t_mid={this.props.t_mid}
+            cman_i={this.props.cman_i} 
+            Uploads={this.props.Uploads}
+          />
         </section>
-        <Row>
-          <Col md={9}>
+
+        <div className="form-group">
+          <div className="input-group">
             <textarea
               className="form-control"
-              name="message_create" 
-              ref={(message_create) => {this.message_create = message_create}} 
-              style={{height:'35px'}}
+              name="message_create"
+              ref={(message_create) => {this.message_create = message_create}}
+              rows="2"
             />
-          </Col>
-          <Col md={3}>
-              <span 
-              className="btn btn-sm btn-primary btn-block"
-              onClick={this.handleConversationMessageSubmit}
-            >SEND</span>
-          </Col>
-        </Row>
+            <div className={"input-group-addon send-message active"} onClick={this.handleConversationMessageSubmit}>
+              SEND
+            </div>
+          </div>
+        </div>
+
       </section>
     );
   }
@@ -460,6 +540,7 @@ class ConvLoadFilter extends Component{
 
   constructor(props,context) {
     super(props,context);
+    /*
     this.state = {
       replied_by:[],
       last_replied_by:'',
@@ -468,6 +549,7 @@ class ConvLoadFilter extends Component{
               { value: 'CAR_RECORDER_WD', label: 'CAR_RECORDER_WD' }
             ]
     };
+    */
   }
 
   handleSelectPage = (option) =>{
@@ -534,7 +616,17 @@ class ConvLoadFilter extends Component{
   }
 
   handleSyncLabels = (event) => {
-    syncLabels(this.props.pid);
+    var yes = confirm('Do you really want to synchronize all labels?');
+    if(yes){
+      syncLabels(this.props.pid);
+    }
+  }
+
+  handleSyncConversations = (event) => {
+    var yes = confirm('Do you really want to synchronize Conversations of last 7 days?');
+    if(yes){
+      syncConversations(this.props.pid);
+    }
   }
 
   render() {
@@ -557,7 +649,7 @@ class ConvLoadFilter extends Component{
             value={pid}
             options={
               Pages.map((Page,i)=>(
-                { value: Page.pid, label: Page.pid }
+                { value: Page.pid, label: Page.name }
               ))
             }
             onChange={this.handleSelectPage}
@@ -623,11 +715,11 @@ class ConvLoadFilter extends Component{
           />
         </div>
         */}
-        <button className="btn btn-primary" onClick={this.handleGetConversations}>Load</button>
-        <button className="btn btn-default" onClick={this.handleGetMoreConversations}>More</button>
-        <button className="btn btn-warning" onClick={this.handleRefreshConversations}>Refresh</button>
-        <button className="btn btn-warning" onClick={this.handleSyncLabels}>Sync Labels</button>
-
+        <button className="btn btn-sm btn-primary" onClick={this.handleGetConversations}>Load</button>
+        <button className="btn btn-sm btn-default" onClick={this.handleGetMoreConversations}>More</button>
+        {/*<button className="btn btn-sm btn-default" onClick={this.handleRefreshConversations}>R</button>*/}
+        <button className="btn btn-sm btn-default" onClick={this.handleSyncLabels}>L</button>
+        <button className="btn btn-sm btn-default" onClick={this.handleSyncConversations}>C</button>
 
       </section>
     );
@@ -659,12 +751,162 @@ class Accordion extends Component{
   }
 }
 
+class Modal extends Component{
+  constructor(props) {
+    super(props);
+  }
+
+  render(){
+    var title = this.props.title;
+    var button_title = this.props.button_title;
+    var children = this.props.children;
+    var modal_id = this.props.modal_id;
+
+    return(
+      <div className="modal fade" id={modal_id} tabIndex="-1" role="dialog" aria-labelledby="myModalLabel">
+        <div className="modal-dialog modal-lg" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <button type="button" className="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+              <h4 className="modal-title" id="myModalLabel">{title}</h4>
+            </div>
+            <div className="modal-body">
+              {children}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-default" data-dismiss="modal">{button_title}</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
+class UploadManager extends Component{
+  constructor(props) {
+    super(props);
+    this.state = {highlights:[]};
+  }
+
+  handleAddFiles = (event) =>{
+    var cman_i = this.props.cman_i;
+    var files = event.target.files;
+    //var image_upload_preview = this.image_upload_preview;
+    var file_buffers = [];
+    var file_infos = [];
+
+    if(files && files.length >=1){
+
+      for(var i=0;i<files.length;i++){
+        file_infos.push({
+          name:files[i].name,
+          type:files[i].type,
+          size:files[i].size,
+          lastModified:files[i].lastModified
+        });
+
+        var type = file_infos[i].type;
+        var file = files[i];
+
+        var accepted_types = ['image/png','image/gif','image/jpeg'];
+        if(accepted_types.findIndex((x)=>(x === type)) !== -1){
+          var reader = new FileReader();
+          //var reader2 = new FileReader();
+          
+          //reader2.onload = function (e) {
+          //  image_upload_preview.src = e.target.result;
+          //}
+          reader.onload = function (e){
+            file_buffers.push(e.target.result);
+            if(files.length === file_buffers.length){
+              //console.log('$$$ file_infos && file_buffers');
+              //console.log(file_infos);
+              //console.log(file_buffers);
+              addFiles(file_infos,file_buffers);
+            }
+          }
+          //reader2.readAsDataURL(file);
+          reader.readAsArrayBuffer(file);
+        } //END IF
+      } //END LOOP
+    }
+  }
+
+
+  handleHighlight = (event) =>{
+    var highlights = this.state.highlights;
+    var filenames_selected = event.target.attributes.getNamedItem('data-filename').value;
+    var index = highlights.indexOf(filenames_selected);
+    if(index === -1){
+      highlights.push(filenames_selected);
+    }else{
+      highlights.splice(index, 1);
+    }
+    this.setState({highlights:highlights})
+  }
+
+  handleSend = (event) =>{
+    console.log('HANDLE SEND');
+    var pid = this.props.pid;
+    var t_mid = this.props.t_mid;
+    var cman_i = this.props.cman_i;
+    var filenames = this.state.highlights;
+
+    //var Uploads = this.props.Uploads;
+    //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
+    //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
+    sendMessage(pid,cman_i,t_mid,null,filenames);
+  }
+
+  handleDelete = (event) =>{
+    console.log('HANDLE DELETE');
+    var filenames = this.state.highlights;
+    deleteFiles(filenames);
+  }
+
+  render(){
+    var cman_i = this.props.cman_i;
+    var Uploads = this.props.Uploads;
+
+    return(
+      <span className="UploadManager">
+        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#cman_modal'+cman_i}>IMAGES</button>
+        <Modal
+          title={'UploadManager'}
+          button_title={'Close'}
+          modal_id={'cman_modal'+cman_i}
+          >
+
+          <section className="FileSelector">
+            {Uploads.map((Upload,i)=>(
+              <div key={'upload_id_'+Upload.filename} className={"thumbnail_box"+(this.state.highlights.indexOf(Upload.filename) !== -1 ? ' active' : '') }>
+                <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-filename={Upload.filename} onClick={this.handleHighlight}/>
+              </div>
+            ))}
+          </section>
+
+          <button className="btn btn-warning" onClick={this.handleDelete}>DELETE</button>
+
+          <section className="FileUploader">
+            <input className="form-control" type="file" onChange={this.handleAddFiles} />
+          </section>
+
+          <button className="btn btn-primary" onClick={this.handleSend}>SEND</button>
+          
+        </Modal>
+      </span>
+    );
+  }
+
+}
+
 class ConversationCard extends Component{
   constructor(props,context) {
     super(props,context);
     this.state = {highlight:false,show_more_messages:false}; 
   }
-/*
+  /*
   handleHighlight = (event) => {
     event.stopPropagation();
     if(event.shiftKey){
@@ -686,7 +928,7 @@ class ConversationCard extends Component{
     event.stopPropagation();
     this.setState({show_more_messages:true});
   }
-*/
+  */
   handleDisplayMessages = (event) => {
     var pid = this.props.pid;
     var t_mid = this.props.Conversation.t_mid;
@@ -941,10 +1183,12 @@ class ConversationManager extends Component{
               ? <MessageManager 
                   messages={ConversationC.messages}
                   page_id={this.props.ConvManager.pid}
+                  cman_i={this.props.cman_i}
                   t_mid={this.state.t_mid_selected}
                   message_count={ConversationC.message_count}
-                  FBLabels={this.props.ConvManager.FBLabels}
+                  FBLabels={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].FBLabels}
                   ConversationC={ConversationC}
+                  Uploads={this.props.Uploads}
                 />
               : null
             }
@@ -973,7 +1217,7 @@ class MessengerApp extends Component{
             : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
         </div>
 
-        <a href={'/api1/logout'}>Logout</a>
+        <a href={BASEDIR+'/logout'}>Logout</a>
 
         <Row>
           <Col md={6}>
@@ -984,6 +1228,7 @@ class MessengerApp extends Component{
                   Pages={this.props.state.Pages}
                   ConvManager={this.props.state.ConvManagers[0]}
                   cman_i={0}
+                  Uploads={this.props.state.Uploads}
                 />
               : null
             }
@@ -996,6 +1241,7 @@ class MessengerApp extends Component{
                   Pages={this.props.state.Pages}
                   ConvManager={this.props.state.ConvManagers[1]}
                   cman_i={1}
+                  Uploads={this.props.state.Uploads}
                 />
               : null
             }
@@ -1017,8 +1263,9 @@ rerender();
 //var socket = io('localhost:3000', {path: '/socket.io'});
 //var socket = io();
 
-var socket = io({transports: ['polling'], upgrade: false, path: '/api1/socket.io'});
+var socket = io({transports: ['polling'], upgrade: false, path: BASEDIR+'/socket.io'});
 var connected = true;
+socket.binaryType = 'arraybuffer'; 
 
 socket.on('log', function (data) {
   console.log('================= LOG ================')
@@ -1094,7 +1341,12 @@ socket.on('REFRESH_CONVERSATIONS', function (data) {
 });
 
 socket.on('SYNC_LABELS', function (data) {
-  console.log('ON');
+  console.log('ON SYNC_LABELS');
+  console.log(data);
+});
+
+socket.on('SYNC_CONVERSATIONS', function (data) {
+  console.log('ON SYNC_CONVERSATIONS');
   console.log(data);
 });
 
@@ -1123,6 +1375,26 @@ socket.on('new message', function (data) {
     });
     rerender();
   }
+});
+
+socket.on('ADD_FILES', function (data) {
+  console.log('ON ADD_FILES');
+  console.log(data);
+  rstore.dispatch({
+    type:'ADD_FILES',
+    Uploads:data.FBUploads
+  });
+  rerender();
+});
+
+socket.on('DELETE_FILES', function (data) {
+  console.log('ON DELETE_FILES');
+  console.log(data);
+  rstore.dispatch({
+    type:'DELETE_FILES',
+    filenames:data.filenames
+  });
+  rerender();
 });
 /*
 // Whenever the server emits 'user joined', log it in the chat body
@@ -1197,20 +1469,72 @@ function cleanInput(input) {
 }
 
 // Sends a chat message
-function sendMessage(pid,t_mid,message) {
-  // Prevent markup from being injected into the message
-  message = cleanInput(message);
-  // if there is a non-empty message and a socket connection
-  if (message && connected) {
-    //addChatMessage(message);
-    // tell server to execute 'new message' and send along one parameter
-    socket.emit('new message', { 
-      type: 'text',
-      pid:pid,
-      t_mid:t_mid,
-      message:message
-    });
+function sendMessage(pid,cman_i,t_mid,message,filenames) {  
+  var state = rstore.getState();
+  //var files = state.ConvManagers[cman_i].files;
+  //var file_buffers = state.ConvManagers[cman_i].file_buffers;
+
+  if(filenames && filenames.length >=1){
+    var url = window.location.protocol+'//'+window.location.hostname+BASEDIR+'/msg/media/'+filenames[0];
+    var attachments = {
+      data:[{
+        id:null,
+        attachment_id:null,
+        created_at:null,
+        updated_at:null,
+        m_mid:null,
+        mime_type:null,
+        name:null,
+        image_data:{
+          url:url,
+          preview_url:url
+        },
+        video_data:null,
+        file_url:null,
+        type:null,
+        payload:null,
+        size:null,
+        sticker_id:null
+      }]
+    };
   }
+  console.log('$$$ FILENAMES');
+  console.log(filenames);
+  console.log('$$$ ATTACHMENTS');
+  console.log(attachments);
+
+  rstore.dispatch({
+    type:'NEW_MESSAGE',
+    pid:pid,
+    t_mid:t_mid,
+    Messages:[{
+      from:{id:pid},
+      to:{id:'uid'},
+      created_time:moment().format('YYYY-MM-DD HH:mm:ss'),
+      message: (message ? message : ''),
+      attachments:(attachments ? attachments : undefined)
+    }],
+    is_tmp:true
+  });
+  rerender();
+
+  if(connected){
+    if (message || (filenames && filenames.length >= 1) ) {
+      var data = {
+        type:(filenames && filenames.length >= 1) ? 'image' : 'text',
+        pid:pid,
+        t_mid:t_mid,
+        message:(message ? message : undefined),
+        filenames:(filenames ? filenames : undefined)
+        //files:((files && files.length>=1) ? files : undefined),
+        //file_buffers:((file_buffers && file_buffers.length>=1) ? file_buffers : undefined)
+      };
+      socket.emit('new message', data);
+
+      console.log(data);
+    }
+  }
+
 }
 
 function sendReadReceipt(pid,t_mid){
@@ -1280,6 +1604,16 @@ function getMessages(pid,t_mid,latest_only) {
   }
 }
 
+function addFiles(file_infos,file_buffers){
+  //window.files = files;
+  //window.file_buffers = file_buffers;
+  socket.emit('ADD_FILES',{file_infos:file_infos,file_buffers:file_buffers});
+}
+
+function deleteFiles(filenames){
+  socket.emit('DELETE_FILES',{filenames:filenames});
+}
+
 function refreshConversations(cman_i){
   var state = rstore.getState();
   var pid = state.ConvManagers[cman_i].pid;
@@ -1304,10 +1638,42 @@ function updateConversationLabels(pid,t_mid,labels){
 
 function syncLabels(pid){
   if (connected) {
-    socket.emit('SYNC_LABELS', { 
+    var data = { 
       pid:pid
-    });
+    };
+    socket.emit('SYNC_LABELS', data);
+    console.log('EMIT SYNC_LABELS');
+    console.log(data);
   }
+}
+
+function syncConversations(pid,last_message_date=undefined){
+  if (connected) {
+    var data = { 
+      pid:pid,
+      last_message_date: ((typeof last_message_date !== 'undefined') ? last_message_date : moment().subtract(7,'d').format('YYYY-MM-DD'))
+    };
+    socket.emit('SYNC_CONVERSATIONS', data);
+    console.log('EMIT SYNC_CONVERSATIONS');
+    console.log(data);
+  }
+}
+
+function mergeUploads(UploadsOld,UploadsLoaded){
+  if(UploadsOld && UploadsOld instanceof Array){
+    var Uploads = UploadsOld.slice(0,UploadsOld.length);
+  }else{
+    var Uploads = [];
+  }
+
+  UploadsLoaded.map((UploadLoaded,i)=>{
+    var index = Uploads.findIndex((x,i)=>(x.upload_id === UploadLoaded.upload_id));
+    if(index === -1){
+      Uploads.push(UploadLoaded);
+      console.log('Uploads pushed, length='+Uploads.length);
+    }
+  });
+  return Uploads;
 }
 
 function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
@@ -1315,6 +1681,7 @@ function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
 
   MessagesLoaded.map((Message,i)=>{
     var index = Messages.findIndex((x,i)=>(x.m_mid === Message.m_mid));
+
     if(index === -1){
       if(is_new === false){
         Messages.push(Message);
@@ -1324,6 +1691,7 @@ function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
         console.log('message unshifted, length='+Messages.length);
       }
     }
+
   });
   return Messages;
 }
@@ -1452,5 +1820,8 @@ window.moment = moment;
 window.rstore = rstore;
 window.Immutable = Immutable;
 socket.emit('GET_EMPLOYEES',{});
+socket.emit('GET_UPLOADS',{});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});
+getConversations(0);
+getConversations(1);
