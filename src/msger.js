@@ -318,6 +318,20 @@ class MessageManager extends Component{
     }
   }
   */
+  handleKeyPress = (event) =>{
+    console.log(event.key);
+    if(event.key === 'Enter' && !event.shiftKey){
+      var t_mid = this.props.t_mid;
+      var pid = this.props.page_id;
+      var cman_i = this.props.cman_i;
+      var message = this.message_create.value;
+
+      sendMessage(pid,cman_i,t_mid,message);
+      this.message_create.value = '';
+      event.preventDefault();
+    }
+  }
+
   handleSendReadReceipt = (event) =>{
     var pid = this.props.page_id;
     var t_mid = this.props.t_mid;
@@ -356,18 +370,8 @@ class MessageManager extends Component{
     updateConversationLabels(pid,t_mid,all_selected_options);
   }
 
-  handleScroll = (event) =>{
-    var scrollTop = event.target.scrollTop;//event.target.scrollTop
-    var scrollHeight = this.messageList.scrollHeight;
-    var clientHeight = this.messageList.clientHeight;
-    var is_bottom = (scrollTop+clientHeight) === scrollHeight;
-    if(is_bottom){
-      this.setState({auto_scroll_locked:false});
-    }else{
-      this.setState({auto_scroll_locked:true});
-    }
-    console.log(event.target);
-    console.log(scrollTop+'-'+scrollHeight+'-'+clientHeight+'-'+is_bottom);
+  handleScrollLock = (event) =>{
+    this.setState({auto_scroll_locked:!this.state.auto_scroll_locked});
   }
 
   scrollToBottom() {
@@ -391,6 +395,7 @@ class MessageManager extends Component{
             <div className="btn-group" role="group">
               <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(Messages.length+'/'+message_count)}</button>
               <button className="btn btn-sm btn-default" onClick={this.handleGetMessagesForceRefresh}><span className="glyphicon glyphicon-refresh"></span></button>
+              <button className={"btn btn-sm"+(this.state.auto_scroll_locked ? ' btn-warning' : ' btn-default')} onClick={this.handleScrollLock}><span className="glyphicon glyphicon-lock"></span></button>
             </div>
             <span className="CustomerName">{this.props.ConversationC.name}</span>
           </div>
@@ -407,7 +412,7 @@ class MessageManager extends Component{
           }
         </section>
         <div style={{clear:'both'}}></div>
-        <section className="messages_list" ref={(div) => {this.messageList = div;}} onScroll={this.handleScroll}>
+        <section className="messages_list" ref={(div) => {this.messageList = div;}}>
           {Messages.map((x,index)=>{
             var Message = Messages[Messages.length - 1 - index];
             var message_from = (Message.from.id == page_id) ? " self" : " other";
@@ -523,6 +528,7 @@ class MessageManager extends Component{
               name="message_create"
               ref={(message_create) => {this.message_create = message_create}}
               rows="2"
+              onKeyPress={this.handleKeyPress}
             />
             <div className={"input-group-addon send-message active"} onClick={this.handleConversationMessageSubmit}>
               SEND
