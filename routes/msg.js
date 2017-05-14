@@ -45,6 +45,8 @@ let {FBConversationLabelFunc} = require('../src/models/FBConversationLabel');
 let FBConversationLabel = FBConversationLabelFunc(Sequelize, sequelize);
 let {FBUploadFunc} = require('../src/models/FBUpload');
 let FBUpload = FBUploadFunc(Sequelize, sequelize);
+let {FBSReplyFunc} = require('../src/models/FBSReply');
+let FBSReply = FBSReplyFunc(Sequelize, sequelize);
 
 FBConversation.hasMany(FBMessage, {foreignKey:'t_mid'});
 FBMessage.belongsTo(FBConversation, {foreignKey:'t_mid'});
@@ -760,7 +762,47 @@ io.on('connection', function(socket) {
 		});
 	});
 
+	socket.on('GET_SREPLIES',function(data){
+		console.log('======================== socket.on(GET_SREPLIES) =========================');
+		FBSReply.findAll()
+		.then(function(Instances){
+			if(Instances){
+				socket.emit('GET_SREPLIES',{FBSReplies:Instances});
+			}
+		});
+	});
 
+	socket.on('ADD_SREPLY',function(data){
+		console.log('======================== socket.on(ADD_SREPLY) =========================');
+		var q = {
+			title:data.title,
+			message:data.message,
+			filename:data.filename
+		};
+
+		FBSReply.create({
+			title:q.title,
+			message:q.message,
+			upload_filename:q.filename,
+			id_employee:socket.request.user.id_employee
+		}).then(function(Instance){
+			if(Instance){
+				socket.emit('ADD_SREPLY',{FBSReply:Instance});
+			}
+		});
+	});
+
+	socket.on('DELETE_SREPLIES',function(data){
+		console.log('======================== socket.on(DELETE_SREPLIES) =========================');
+		var sreply_ids = data.sreply_ids;
+
+		FBSReply.destroy({where:{sreply_id:{$in:sreply_ids}}})
+		.then(function(unknown){
+			if(unknown){
+				socket.emit('DELETE_SREPLIES',{sreply_ids:sreply_ids});
+			}
+		});
+	});
 
 	// when the client emits 'add user', this listens and executes
 	socket.on('add user', function(username) {
@@ -2046,8 +2088,9 @@ function upsertMessages(t_mid,Messages){
 			where: {m_mid: Message.id}
 		}).then(sequelizeHandler)
 		.then(function(FBMessage){
+			console.log(FBMessage);
 			//IMAGES, VIDEO, AUDIO FROM PAGE & USER
-			if(FBMessage && Message.attachments && Message.attachments.data.length >= 1){
+			if(Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
 				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
 					return FBAttachment.upsert({
@@ -2358,15 +2401,18 @@ function getAndUpsertMessages(PAGE_ACCESS_TOKEN,pid,t_mid,options={}){
 			}else{
 				r.FBMessages = [];
 			}
+			//var MessagesNew = r.FBMessages;
+			
 			var MessagesNew = [];
 			r.Messages.map((Message,i)=>{
 				var index = r.FBMessages.findIndex((x,i)=>(x.m_mid === Message.id));
 				if(index === -1){
 					MessagesNew.push(Message);
 				}else{
-					//DO NOTHING
+					MessagesNew.push(Message);
 				}
 			});
+			
 			return upsertMessages(t_mid,MessagesNew);
 		}else{
 			winston.error('FBGraphAPINoResultError',{f:'getMessages',t_mid:t_mid});

@@ -15,6 +15,7 @@ const BASEDIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
 const initial_state = Immutable({
   connection:'',
   Uploads:[],
+  SReplies:[],
   Pages:[
     {pid:1769068019987617,name:'SY Online Venture',Conversations:[]},
     {pid:1661200044095778,name:'SY代购',Conversations:[]}
@@ -253,6 +254,31 @@ var reducer = function(state=Immutable([]),action=null){
       //Uploads = mergeUploads(Uploads,UploadsLoaded);
       state = Immutable.setIn(state, ["Uploads"], Uploads);
       break;
+
+    case 'GET_SREPLIES':
+      state = Immutable.setIn(state, ["SReplies"], action.SReplies);
+      break;
+
+    case 'ADD_SREPLY':
+      var SReplyLoaded = action.SReply;
+      var SReplies = Immutable.asMutable(state.SReplies);
+
+      SReplies.push(SReplyLoaded);
+      state = Immutable.setIn(state, ["SReplies"], SReplies);
+      break;
+
+    case 'DELETE_SREPLIES':
+      var sreply_ids = action.sreply_ids;
+      var SReplies = Immutable.asMutable(state.SReplies);
+      SReplies = SReplies.filter((SReply,i)=>{
+        return sreply_ids.indexOf(SReply.sreply_id) === -1;
+      });
+      //Uploads = mergeUploads(Uploads,UploadsLoaded);
+      state = Immutable.setIn(state, ["SReplies"], SReplies);
+      break;
+
+
+
 
     default:
       break;
@@ -510,14 +536,24 @@ class MessageManager extends Component{
             );
           })}
         </section>
+
         <section>
-          <button className="btn btn-sm btn-default" onClick={this.handleSendReadReceipt}>{"READ"}</button>
-          <button className="btn btn-sm btn-default" onClick={this.handleEngageConversation}>{"ENGAGE"}</button>
+          <button className="btn btn-sm btn-default" onClick={this.handleSendReadReceipt}><span className="glyphicon glyphicon-sunglasses"></span>{"Read"}</button>
+          <button className="btn btn-sm btn-default" onClick={this.handleEngageConversation}>{"Engage"}</button>
+          <SReplyManager 
+            pid={this.props.page_id}
+            t_mid={this.props.t_mid}
+            cman_i={this.props.cman_i}
+            Uploads={this.props.Uploads}
+            SReplies={this.props.SReplies}
+            psid={this.props.ConversationC ? this.props.ConversationC.psid : undefined}
+          />
           <UploadManager 
             pid={this.props.page_id}
             t_mid={this.props.t_mid}
             cman_i={this.props.cman_i} 
             Uploads={this.props.Uploads}
+            psid={this.props.ConversationC ? this.props.ConversationC.psid : undefined}
           />
         </section>
 
@@ -764,9 +800,9 @@ class Modal extends Component{
 
   render(){
     var title = this.props.title;
-    var button_title = this.props.button_title;
     var children = this.props.children;
     var modal_id = this.props.modal_id;
+    var footer = this.props.footer;
 
     return(
       <div className="modal fade" id={modal_id} tabIndex="-1" role="dialog" aria-labelledby="myModalLabel">
@@ -780,7 +816,7 @@ class Modal extends Component{
               {children}
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-default" data-dismiss="modal">{button_title}</button>
+              {footer}
             </div>
           </div>
         </div>
@@ -874,14 +910,20 @@ class UploadManager extends Component{
   render(){
     var cman_i = this.props.cman_i;
     var Uploads = this.props.Uploads;
+    var psid = this.props.psid;
+    var footer = 
+      <div>
+        <button className="btn btn-primary" onClick={this.handleSend} data-dismiss="modal">SEND</button>
+        <button type="button" className="btn btn-default" data-dismiss="modal">Close</button>
+      </div>;
 
     return(
       <span className="UploadManager">
-        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#cman_modal'+cman_i}>IMAGES</button>
+        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#cman_modal'+cman_i} disabled={psid ? false : true}><span className="glyphicon glyphicon-picture" aria-hidden="true"></span>Images</button>
         <Modal
-          title={'UploadManager'}
-          button_title={'Close'}
+          title={'Images'}
           modal_id={'cman_modal'+cman_i}
+          footer={footer}
           >
 
           <section className="FileSelector">
@@ -898,13 +940,155 @@ class UploadManager extends Component{
             <input className="form-control" type="file" onChange={this.handleAddFiles} />
           </section>
 
-          <button className="btn btn-primary" onClick={this.handleSend}>SEND</button>
           
         </Modal>
       </span>
     );
   }
 
+}
+
+class SReplyManager extends Component{
+  constructor(props) {
+    super(props);
+    this.state = {image_selected:'',sreply_id_selected:null};
+  }
+
+  handleSelectImage = (event) =>{
+    this.setState({image_selected:event.target.attributes.getNamedItem('data-filename').value})
+  }
+
+  handleClearImageSelection = (event) =>{
+    this.setState({image_selected:''});
+  }
+
+  handleAdd = (event) =>{
+    var title = this.sreply_title_create.value;
+    var message = this.sreply_message_create.value;
+    var filename = this.state.image_selected;
+
+    addSReply(title,message,filename);
+    this.sreply_title_create.value = '';
+    this.sreply_message_create.value = '';
+    this.setState({image_selected:''});
+  }
+
+  handleSelect = (event) =>{
+    this.setState({sreply_id_selected:parseInt(event.target.attributes.getNamedItem('data-sreply-id').value,10)});
+  }
+
+  handleSend = (event) =>{
+    var pid = this.props.pid;
+    var t_mid = this.props.t_mid;
+    var cman_i = this.props.cman_i;
+    var sreply_id = this.state.sreply_id_selected;
+    var SReply = this.props.SReplies.find((x)=>(x.sreply_id === sreply_id));
+    var filename = SReply.upload_filename;
+    var message = SReply.message;
+    //var Uploads = this.props.Uploads;
+    //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
+    //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
+    sendMessage(pid,cman_i,t_mid,null,[filename]);
+    sendMessage(pid,cman_i,t_mid,message);
+  }
+
+  handleDelete = (event) =>{
+    var sreply_id = this.state.sreply_id_selected;
+    if(sreply_id){
+      deleteSReplies([sreply_id]);
+    }
+  }
+
+  handleSearch = (event) =>{
+
+  }
+
+  render(){
+    var cman_i = this.props.cman_i;
+    var Uploads = this.props.Uploads;
+    var SReplies = this.props.SReplies;
+    var psid = this.props.psid;
+    var footer = 
+      <div>
+        <button className="btn btn-primary" onClick={this.handleSend} data-dismiss="modal">SEND</button>
+        <button type="button" className="btn btn-default" data-dismiss="modal">Close</button>
+      </div>;
+    
+    return(
+      <span className="SReplyManager">
+        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#sreply_cman_modal'+cman_i} disabled={psid ? false : true}><span className="glyphicon glyphicon-flash" aria-hidden="true"></span> SavedReply</button>
+        <Modal
+          title={'Saved Replies'}
+          modal_id={'sreply_cman_modal'+cman_i}
+          footer={footer}
+          >
+
+          <div className="form-group">
+            <label>Search</label>
+            <input type="text" className="form-control" onChange={this.handleSearch}/>
+          </div>
+
+          <section className="SReplySelector">
+            {SReplies.map((SReply,i)=>(
+              <div 
+                key={'cman_'+cman_i+'_sreply_id_'+SReply.sreply_id} 
+                className={"sreply_image_thumbnail_box"+(this.state.sreply_id_selected === SReply.sreply_id ? ' alert-info' : '')}
+                onClick={this.handleSelect}
+                data-sreply-id={SReply.sreply_id}
+              >
+                <div data-sreply-id={SReply.sreply_id} className="title">{SReply.title}</div>
+                <img data-sreply-id={SReply.sreply_id} className="sreply_image_thumbnail" src={BASEDIR+'/msg/media/'+SReply.upload_filename}/>
+                <div data-sreply-id={SReply.sreply_id} className="message">{SReply.message}</div>
+              </div>
+            ))}
+            <div className="clear"></div>
+          </section>
+          <button className="btn btn-danger" onClick={this.handleDelete}>DELETE</button>
+
+          <hr />
+
+          <Row>
+          <Col md={6}>
+
+            <h4>{'Add a new Saved Reply'}</h4>
+            <div className="form-group">
+              <input type="text" className="form-control" placeholder="Title" ref={(node)=>{this.sreply_title_create = node}}/>
+            </div>
+
+            <div className="form-group">
+              <textarea className="form-control" placeholder="message" ref={(node)=>{this.sreply_message_create = node}}/>
+            </div>
+
+          </Col>
+          </Row>
+
+          <Row>
+          <Col md={12}>
+            { this.state.image_selected !== ''
+              ?
+              <div>
+                <button className="btn btn-default btn-sm" onClick={this.handleClearImageSelection}>Choose Photo</button>
+                <img className="selected_image_thumbnail" src={BASEDIR+'/msg/media/'+this.state.image_selected}/>
+              </div>
+              :
+              <section className="FileSelector">
+                {Uploads.map((Upload,i)=>(
+                  <div key={'sreply_upload_id_'+Upload.filename} className={"thumbnail_box"+(this.state.image_selected == Upload.filename ? ' active' : '') }>
+                    <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-filename={Upload.filename} onClick={this.handleSelectImage}/>
+                  </div>
+                ))}
+              </section>
+            }
+
+            <button className="btn btn-primary" onClick={this.handleAdd}>ADD</button>
+
+          </Col>
+          </Row>
+
+        </Modal>
+      </span>
+    );
+  }
 }
 
 class ConversationCard extends Component{
@@ -960,11 +1144,15 @@ class ConversationCard extends Component{
         onClick={this.handleDisplayMessages}
       >
         <Row>
-          <Col md={2}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
+          <Col md={2}><button className={"btn"+(this.props.Conversation.highlight ? ' btn-primary' : ' btn-default')} disabled={true} onClick={this.handleHighlight}>{this.props.i+1}</button></Col>
           <Col md={10}>
             <div>
               <span className="conversation_header">
-                <span className="sender_name">{this.props.Conversation.name ? this.props.Conversation.name : this.props.Conversation.senders.data[0].name}</span>
+                <span></span>
+                <span className="sender_name">
+                  {this.props.Conversation.psid ? '🔶 ' : null}
+                  {this.props.Conversation.name ? this.props.Conversation.name : this.props.Conversation.senders.data[0].name}
+                </span>
               </span>
               <span className="updated_time">
                 {/*moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 
@@ -1195,6 +1383,7 @@ class ConversationManager extends Component{
                   FBLabels={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].FBLabels}
                   ConversationC={ConversationC}
                   Uploads={this.props.Uploads}
+                  SReplies={this.props.SReplies}
                 />
               : null
             }
@@ -1223,7 +1412,7 @@ class MessengerApp extends Component{
             : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
         </div>
 
-        <a href={BASEDIR+'/logout'}>Logout</a>
+        <a href={BASEDIR+'/logout?redirect='+BASEDIR+'/msg/msger'}>Logout</a>
 
         <Row>
           <Col md={6}>
@@ -1235,6 +1424,7 @@ class MessengerApp extends Component{
                   ConvManager={this.props.state.ConvManagers[0]}
                   cman_i={0}
                   Uploads={this.props.state.Uploads}
+                  SReplies={this.props.state.SReplies}
                 />
               : null
             }
@@ -1248,6 +1438,7 @@ class MessengerApp extends Component{
                   ConvManager={this.props.state.ConvManagers[1]}
                   cman_i={1}
                   Uploads={this.props.state.Uploads}
+                  SReplies={this.props.state.SReplies}
                 />
               : null
             }
@@ -1383,6 +1574,17 @@ socket.on('new message', function (data) {
   }
 });
 
+socket.on('GET_SREPLIES', function (data) {
+  console.log('ON GET_SREPLIES');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_SREPLIES',
+    SReplies:data.FBSReplies
+  });
+  rerender();
+});
+
+
 socket.on('ADD_FILES', function (data) {
   console.log('ON ADD_FILES');
   console.log(data);
@@ -1402,6 +1604,27 @@ socket.on('DELETE_FILES', function (data) {
   });
   rerender();
 });
+
+socket.on('ADD_SREPLY', function (data) {
+  console.log('ON ADD_SREPLY');
+  console.log(data);
+  rstore.dispatch({
+    type:'ADD_SREPLY',
+    SReply:data.FBSReply
+  });
+  rerender();
+});
+
+socket.on('DELETE_SREPLIES', function (data) {
+  console.log('ON DELETE_SREPLIES');
+  console.log(data);
+  rstore.dispatch({
+    type:'DELETE_SREPLIES',
+    sreply_ids:data.sreply_ids
+  });
+  rerender();
+});
+
 /*
 // Whenever the server emits 'user joined', log it in the chat body
 socket.on('user joined', function (data) {
@@ -1469,6 +1692,23 @@ socket.on('ERROR', function (data) {
   alert(data.message);
 });
   
+function addSReply(title,message,filename){
+  var data = {
+    title:title,
+    message:message !== '' ? message : '',
+    filename:typeof filename !== 'undefined' && filename !== '' ? filename : undefined
+  }
+  socket.emit('ADD_SREPLY',data);
+  console.log('EMIT ADD_SREPLY');
+  console.log(data);
+}
+
+function deleteSReplies(sreply_ids){
+  var data = {sreply_ids:sreply_ids};
+  socket.emit('DELETE_SREPLIES',data);
+  console.log('EMIT DELETE_SREPLIES');
+  console.log(data);
+}
 
 function cleanInput(input) {
   return input;
@@ -1687,7 +1927,6 @@ function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
 
   MessagesLoaded.map((Message,i)=>{
     var index = Messages.findIndex((x,i)=>(x.m_mid === Message.m_mid));
-
     if(index === -1){
       if(is_new === false){
         Messages.push(Message);
@@ -1696,8 +1935,9 @@ function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
         Messages.unshift(Message);
         console.log('message unshifted, length='+Messages.length);
       }
+    }else{
+      Messages[index] = Message;
     }
-
   });
   return Messages;
 }
@@ -1827,6 +2067,7 @@ window.rstore = rstore;
 window.Immutable = Immutable;
 socket.emit('GET_EMPLOYEES',{});
 socket.emit('GET_UPLOADS',{});
+socket.emit('GET_SREPLIES',{});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});
 getConversations(0);

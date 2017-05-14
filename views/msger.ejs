@@ -14,6 +14,7 @@
         width:calc(100vw - 50px);
         margin:auto;
       }
+      .clear{clear:both;}
 
       .ConversationListBox{padding:5px;}
       .ConversationListBox div.header{font-weight:bold;}
@@ -60,7 +61,7 @@
         border-radius:5px;
         text-align:left;
       }
-      .MessageManager .message.self{background-color:#d9edf7;color:#222;}
+      .MessageManager .message.self{background-color:rgba(255,224,0,0.13);color:#222;/**/}
       .MessageManager .message.other{background-color:#f7f7f7;color:#222;}
 
       .MessageManager .image_url{}
@@ -100,6 +101,36 @@
       }
 
       .FileSelector .upload_image_thumbnail{max-height: 80px;max-width:150px;}
+      
+      .SReplyManager .FileSelector{white-space: nowrap;overflow-x:scroll;}
+      .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
+      .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
+
+      .SReplyManager .SReplySelector{
+        padding:8px;
+        border:1px solid black;
+        border-radius:5px;
+        height:360px;
+        overflow-y:auto;}
+      .SReplyManager .SReplySelector .sreply_image_thumbnail_box{
+        float:left;
+        display:block;
+        width:30%;
+        height:260px;
+        padding: 5px;
+        margin: 0px;
+        border:1px solid #ccc;
+        border-radius:3px;
+        cursor: pointer;
+        overflow-y:auto;
+      }
+      .SReplyManager .SReplySelector .sreply_image_thumbnail_box.active {
+        border: 3px solid cornflowerblue;
+      }
+
+      .SReplyManager .SReplySelector .sreply_image_thumbnail{max-height: 80px;max-width:150px;}
+      .SReplyManager .SReplySelector .title{text-align:center;font-weight:bold;}
+      .SReplyManager .SReplySelector .message{}
     </style>
   </head>
   <body>
