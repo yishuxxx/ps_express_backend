@@ -29,9 +29,11 @@ const initial_state = Immutable({
       //last_reply_by : '',
       //id_products_asked   : [],      
       //id_products_bought  : [],
+      inbox:'INBOX',
       label_ids    : [],
       id_employee_engage_by : null,
       name:'',
+      message:'',
       //enquiry_times  : null
     }
   },{
@@ -43,9 +45,11 @@ const initial_state = Immutable({
       //last_reply_by : '',
       //id_products_asked   : [],      
       //id_products_bought  : [],
+      inbox:'INBOX',
       label_ids    : [],
       id_employee_engage_by : null,
       name:'',
+      message:'',
       //enquiry_times  : null
     }
   }],
@@ -57,8 +61,16 @@ var reducer = function(state=Immutable([]),action=null){
     case 'CONNECTION':
       state = Immutable.setIn(state,['connection_status'], action.connection_status);
       break;
+    case 'GET_ME':
+      state = Immutable.setIn(state, ["me"], action.me);
+      break;
     case 'GET_EMPLOYEES':
       //action.Employees.unshift({id_employee:null})
+      var employee_firstnames = {};
+      action.Employees.map((Employee)=>{
+          employee_firstnames[''+Employee.id_employee] = Employee.firstname;
+      });
+      state = Immutable.setIn(state, ["employee_firstnames"], employee_firstnames);
       state = Immutable.setIn(state, ["Employees"], action.Employees);
       break;
     case 'GET_LABELS_RESPONSE_SUCCESS':
@@ -213,6 +225,9 @@ var reducer = function(state=Immutable([]),action=null){
       var Conversations = Page.Conversations;
 
       switch(action.filter_name){
+        case 'inbox':
+          state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "inbox"], action.filter_value);
+          break;
         case 'label_ids':
           state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "label_ids"], action.filter_value);
           break;
@@ -221,6 +236,9 @@ var reducer = function(state=Immutable([]),action=null){
           break;
         case 'name':
           state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "name"], action.filter_value);
+          break;
+        case 'message':
+          state = Immutable.setIn(state, ["ConvManagers", cman_i, "filter", "message"], action.filter_value);
           break;
         default:
           break;
@@ -603,6 +621,17 @@ class ConvLoadFilter extends Component{
     rerender();
   }
 
+  handleSelectInbox = (option) =>{
+    rstore.dispatch({
+      type:'CHANGE_FILTER',
+      pid: this.props.pid,
+      cman_i:this.props.cman_i,
+      filter_name: 'inbox',
+      filter_value: (option ? option.value : 'INBOX')
+    });
+    rerender();
+  }
+
   handleSelectFBLabels = (all_selected_options) =>{
     var label_ids = all_selected_options.map((x,i)=>(x.value));
     
@@ -612,7 +641,6 @@ class ConvLoadFilter extends Component{
       cman_i:this.props.cman_i,
       filter_name: 'label_ids',
       filter_value: (label_ids ? label_ids : null)
-
     });
     rerender();
   }
@@ -638,6 +666,18 @@ class ConvLoadFilter extends Component{
     });
     rerender();
   }
+
+  handleChangeMessage = (event) =>{
+    rstore.dispatch({
+      type:'CHANGE_FILTER',
+      pid: this.props.pid,
+      cman_i:this.props.cman_i,
+      filter_name: 'message',
+      filter_value: (event.target.value ? event.target.value : "")
+    });
+    rerender();
+  }
+
   /*
   handleSelectProductsAsked = (all_selected_options) =>{
     this.setState({products_asked:all_selected_options});
@@ -676,11 +716,13 @@ class ConvLoadFilter extends Component{
     var Pages = this.props.Pages;
     var cman_i = this.props.cman_i;
     var pid = this.props.pid;
+    var inbox = this.props.filter.inbox;
     var FBLabels = this.props.FBLabels;
     var label_ids = this.props.filter.label_ids;
     var id_employee_engage_by = this.props.filter.id_employee_engage_by;
     var Page = this.props.Pages.find((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
     var name = this.props.filter.name;
+    var message = this.props.filter.message;
 
     return(
       <section className="ConvLoadFilter">
@@ -695,6 +737,16 @@ class ConvLoadFilter extends Component{
               ))
             }
             onChange={this.handleSelectPage}
+            multi={false}
+          />
+        </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Inbox :</span>
+          <ReactSelect 
+            value={inbox}
+            options={[{value:'INBOX',label:'Inbox'},{value:'UNREAD',label:'Unread'}]}
+            onChange={this.handleSelectInbox}
             multi={false}
           />
         </div>
@@ -735,6 +787,12 @@ class ConvLoadFilter extends Component{
           <span className="input-group-addon input-group-sm">Name :</span>
           <input className="form-control" value={name} onChange={this.handleChangeName} />
         </div>
+
+        <div className="input-group">
+          <span className="input-group-addon input-group-sm">Message :</span>
+          <input className="form-control" value={message} onChange={this.handleChangeMessage} />
+        </div>
+
 
         {/*
         <div className="input-group">
@@ -862,9 +920,6 @@ class UploadManager extends Component{
           reader.onload = function (e){
             file_buffers.push(e.target.result);
             if(files.length === file_buffers.length){
-              //console.log('$$$ file_infos && file_buffers');
-              //console.log(file_infos);
-              //console.log(file_buffers);
               addFiles(file_infos,file_buffers);
             }
           }
@@ -1132,7 +1187,7 @@ class ConversationCard extends Component{
     if(this.props.Conversation.messages && this.props.Conversation.messages.data.length >=1){
       var messages = this.props.Conversation.messages.data.slice(0,4);
     }
-    
+
     return(
       <section 
         className={ "ConversationCard"
@@ -1155,36 +1210,38 @@ class ConversationCard extends Component{
                 </span>
               </span>
               <span className="updated_time">
-                {/*moment().diff(moment.utc(this.props.Conversation.updated_time),'days') <= 7 
+                {moment().diff(moment.utc(this.props.Conversation.updated_time),'hours') <= 2 
                   ? moment.utc(this.props.Conversation.updated_time).utcOffset(8).fromNow() 
-                  : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD')
-                */}
-                {moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')}
+                  : moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')
+                }
+                {/*moment.utc(this.props.Conversation.updated_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')*/}
               </span>
             </div>
 
-            <span className="label label-success engage_box">
-            {this.props.Conversation.engage_by
-              ? this.props.Conversation.engage_by+' '+moment(this.props.Conversation.engage_time).format('HH:mm:ss')
-              : null
-            }
-            </span>
+            <div>
+              <span className="label label-success engage_box">
+              {( this.props.Conversation.engage_by && moment().diff(moment(this.props.Conversation.engage_time),'seconds') <= 7200 )
+                ? getEmployeeFirstname(this.props.Conversation.engage_by)
+                : null
+              }
+              </span>
 
-            <span className="label label-info last_replied_box">
-            {this.props.Conversation.replied_last_by
-              ? this.props.Conversation.replied_last_by+' '+moment(this.props.Conversation.replied_last_time).format('HH:mm:ss')
-              : null
-            }
-            </span>
+              <span className="label label-info last_replied_box">
+              {this.props.Conversation.replied_last_by
+                ? getEmployeeFirstname(this.props.Conversation.replied_last_by)
+                : null
+              }
+              </span>
+            </div>
 
-            <span className="label_box">
+            <div className="label_box">
             {this.props.Conversation.FBLabels && this.props.Conversation.FBLabels.length>=1
               ? this.props.Conversation.FBLabels.map((FBlabel,i)=>(
                 <span key={this.props.Conversation.id+'L'+i} className="label label-default">{FBlabel.name}</span>
               ))
               : null
             }
-            </span>
+            </div>
 
             <span className="message">
                 <div className="snippet">{this.props.Conversation.snippet ? this.props.Conversation.snippet : '[ IMAGE | STICKER ? ]'}</div>
@@ -1397,6 +1454,10 @@ class ConversationManager extends Component{
 
 class MessengerApp extends Component{
 
+  handleDeleteEngages = (event) =>{
+    deleteEngages();
+  }
+
   render(){
     return(
       <section className="MessengerApp">
@@ -1412,7 +1473,9 @@ class MessengerApp extends Component{
             : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
         </div>
 
-        <a href={BASEDIR+'/logout?redirect='+BASEDIR+'/msg/msger'}>Logout</a>
+        <a href={BASEDIR+'/logout?redirect='+BASEDIR+'/msg/msger'}>Logout </a>
+
+        <span className="btn btn-xs btn-default" onClick={this.handleDeleteEngages}>Clear My Engages</span>
 
         <Row>
           <Col md={6}>
@@ -1481,8 +1544,18 @@ socket.on('login', function (data) {
   console.log(message);
 });
 
+socket.on('GET_ME', function (data) {
+  console.log('ON GET_ME');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_ME',
+    me:data,
+  });
+  rerender();
+});
+
 socket.on('GET_EMPLOYEES', function (data) {
-  console.log('ON');
+  console.log('ON GET_EMPLOYEES');
   console.log(data);
   rstore.dispatch({
     type:'GET_EMPLOYEES',
@@ -1550,7 +1623,8 @@ socket.on('SYNC_CONVERSATIONS', function (data) {
 // Whenever the server emits 'new message', update the chat body
 socket.on('new message', function (data) {
   if(true){//parseInt(data.pid,10) !== 1769068019987617
-    console.log('ON');
+    console.log('ON new message');
+    console.log(socket);
     if(data.Message && data.Message.message){
       console.log('message='+data.Message.message);
       console.log(data);
@@ -1623,6 +1697,28 @@ socket.on('DELETE_SREPLIES', function (data) {
     sreply_ids:data.sreply_ids
   });
   rerender();
+});
+
+socket.on('DELETE_ENGAGES',function (data) {
+  console.log('ON DELETE_ENGAGES');
+  console.log(data);
+  if(data.Conversations && data.Conversations.length>=1){
+    var pids = rstore.getState().ConvManagers.map((x)=>(x.pid));
+    pids.map((pid)=>{
+      rstore.dispatch({
+        type:'REFRESH_CONVERSATIONS',
+        pid:pid,
+        Conversations:data.Conversations
+      });
+    });
+    rerender();
+  }
+});
+
+socket.on('NO_DATA',function (data) {
+  console.log('ON NO_DATA');
+  console.log(data);
+  alert(data.error+': '+data.message);
 });
 
 /*
@@ -1800,7 +1896,32 @@ function engageConversation(pid,t_mid){
       t_mid:t_mid
     };
     socket.emit('ENGAGE_CONVERSATION', data);
-    console.log('EMIT')
+    console.log('EMIT ENGAGE_CONVERSATION')
+    console.log(data);
+  }
+}
+
+function deleteEngage(pid,t_mid,id_employee){
+  if(connected){
+    var data = {
+      pid:pid,
+      t_mid:t_mid,
+      id_employee:id_employee
+    }
+    socket.emit('DELETE_ENGAGE',data);
+    console.log('EMIT DELETE_ENGAGE')
+    console.log(data);
+  }
+}
+
+function deleteEngages(){
+  if(connected){
+    var id_employee = rstore.getState().me.id_employee;
+    var data = {
+      id_employee:id_employee
+    }
+    socket.emit('DELETE_ENGAGES',data);
+    console.log('EMIT DELETE_ENGAGES')
     console.log(data);
   }
 }
@@ -1819,14 +1940,20 @@ function getConversations(cman_i, more) {
       data.before = Page.Conversations[Page.Conversations.length-1].updated_time;
       data.limit = 100;
     }
+    if(filter.inbox && filter.inbox !== 'INBOX'){
+      data.inbox = filter.inbox;
+    }
     if(filter.id_employee_engage_by){
       data.engage_by = filter.id_employee_engage_by;
     }
     if(filter.label_ids && filter.label_ids.length >=1){
       data.label_ids = filter.label_ids;
     }
-    if(filter.name && filter.name !== ""){
+    if(filter.name && filter.name != ""){
       data.name = filter.name;
+    }
+    if(filter.message && filter.message != ""){
+      data.message = filter.message;
     }
 
     socket.emit('GET_CONVERSATIONS', data);
@@ -1960,9 +2087,9 @@ function mergeConversations(ConversationsOld,ConversationsLoaded,is_new=true,exc
       if(exclude_messages === false){
         Conversations[index] = Conversation;
       }else if(exclude_messages === true){
-        var Messages = Conversations[index].messages.data;
+        var messages = Conversations[index].messages;
         Conversations[index] = Conversation;
-        Conversations[index].messages.data = Messages;
+        Conversations[index].messages = messages;
       }
     }
   });
@@ -1998,9 +2125,15 @@ function dateCompareMessage(a, b){
 }
 
 function filterConversations(Conversations,filter){
-  console.log('$$$$ FILTER STARTS');
-  console.log(Conversations.length);
-  console.log(filter);
+  if(filter.inbox && filter.inbox === 'UNREAD'){
+    Conversations = Conversations.filter((Conversation,i)=>{
+      if(Conversation.unread_count > 0){
+        return true;
+      }
+      return false;
+    });
+  }
+
   if(filter.label_ids && filter.label_ids.length >=1){
     console.log(filter.label_ids);
     Conversations = Conversations.filter((Conversation,i)=>{
@@ -2047,10 +2180,6 @@ function filterConversations(Conversations,filter){
 
   if(filter.name && filter.name !== ""){
     Conversations = Conversations.filter((Conversation,i)=>{
-      console.log('$$$ NAME MATCHING');
-      console.log(Conversation.name.toLowerCase());
-      console.log(filter.name.toLowerCase());
-      console.log(Conversation.name.toLowerCase().indexOf( filter.name.toLowerCase()));
       if(Conversation.name && (Conversation.name.toLowerCase().indexOf( filter.name.toLowerCase()) ) !== -1 ){
         return true;
       }
@@ -2059,6 +2188,10 @@ function filterConversations(Conversations,filter){
   }
 
   return Conversations;
+}
+
+function getEmployeeFirstname(id_employee){
+  return rstore.getState().employee_firstnames[''+id_employee];
 }
 
 window.rerender  = rerender;

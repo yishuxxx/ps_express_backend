@@ -15,7 +15,7 @@ router.use('/',function (req, res, next) {
 });
 */
 const BASEDIR_IMAGE = './data/image/';
-const APP_SECRET = 'cf682be6c2942e8af05c7a5ea13ce065';
+const APP_SECRET = 'b2dc0e4b7dd44436614eb4d72381e150';//b2dc0e4b7dd44436614eb4d72381e150//cf682be6c2942e8af05c7a5ea13ce065
 // Arbitrary value used to validate a webhook
 const VALIDATION_TOKEN = 'TheOneAndOnlyToken';
 const SERVER_URL = 'https://www.sy.com.my/api/msg/';
@@ -80,6 +80,7 @@ let numUsers = 0;
 io.on('connection', function(socket) {
 	console.log('connected to socket client');
 	console.log(socket.request.user);
+	socket.emit('GET_ME',socket.request.user);
 
 	socket.on('GET_EMPLOYEES', function(data) {
 		console.log('======================== socket.on(GET_EMPLOYEES) =========================');
@@ -264,7 +265,7 @@ io.on('connection', function(socket) {
 				r.FBConversation = Instance;
 				r.psid = r.FBConversation.psid ? r.FBConversation.psid : undefined;
 				r.FBConversation.engage_by = q.id_employee;
-				r.FBConversation.engage_time = moment().format('YYYY-MM-DD HH:mm:ss');
+				r.FBConversation.engage_time = moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss');
 				return r.FBConversation.save();
 			}else{
 				winston.error('SequelizeNoResultError',{message:'Cannot engage conversation that is not in database'});
@@ -309,6 +310,51 @@ io.on('connection', function(socket) {
 			throw err;
 		})
 	});
+
+	socket.on('DELETE_ENGAGES', function(data) {
+		console.log('======================== socket.on(DELETE_ENGAGES) =========================');		
+		var q = {
+			id_employee:data.id_employee
+		};
+		var r = {};
+
+		console.log('======================== FBConversation.findAll =========================');		
+		console.log(q);
+		(()=>{
+			return FBConversation.findAll({
+				where: {engage_by: q.id_employee},
+			}).then(sequelizeHandler);	
+		})()
+		.then(function(Instances) {
+			if(Instances) {
+				console.log('======================== FBConversation.save x N =========================');		
+				console.log(Instances.length);
+				r.FBConversations = Instances;
+				return Sequelize.Promise.mapSeries(r.FBConversations,function(FBConversation,i){
+					FBConversation.engage_by = null;
+					FBConversation.engage_time = null;
+					return FBConversation.save();
+				});
+			}else{
+				//JUST SKIP IF NO ENGAGES
+			}
+		}).then(function(unknown){
+			io.local.emit('DELETE_ENGAGES', {
+				Conversations:r.FBConversations,
+			});
+			console.log('======================== socket.emit(DELETE_ENGAGES) =========================');
+		}).catch(function(err){
+			if(err instanceof Error){
+				io.local.emit('ERROR',{
+					error:err.name,
+					message:err.message
+				});
+			}
+			throw err;
+		})
+	});
+
+
 
 	socket.on('SYNC_CONVERSATIONS',function(data){
 
@@ -380,14 +426,36 @@ io.on('connection', function(socket) {
 			pid:data.pid,
 			before:typeof data.before !== 'undefined' ? moment.utc(data.before).format("YYYY-MM-DD HH:mm:ss") : moment.utc().format("YYYY-MM-DD HH:mm:ss"),
 			limit:typeof data.limit !== 'undefined' ? data.limit : 100,
+			inbox:typeof data.inbox !== 'undefined' ? data.inbox : undefined,			
 			engage_by:typeof data.engage_by !== 'undefined' ? data.engage_by : undefined,
 			label_ids:typeof data.label_ids !== 'undefined' ? data.label_ids : undefined,
 			name:typeof data.name !== 'undefined' ? data.name : undefined,
+			message:typeof data.message !== 'undefined' ? data.message : undefined,
 		};
 		var r = {};
 		var where = {pid:q.pid};
+		var include = undefined;
 		if(q.before){
 			where.updated_time = {$lt:q.before};
+		}
+		if(q.inbox && q.inbox === 'UNREAD'){
+			where.unread_count = {$gt:0};
+		}
+		if(q.label_ids && q.label_ids.length >=1){
+			/*
+			var where_labels = {};
+			where_labels.label_id = {$in:q.label_ids};
+			*/
+			if(!(include instanceof Array)){
+				include = [];
+			}
+			include.push({
+				model:FBLabel,
+				where:{
+					label_id:{$in:q.label_ids}
+				}
+			});
+
 		}
 		if(q.engage_by){
 			where.engage_by = q.engage_by;
@@ -395,27 +463,37 @@ io.on('connection', function(socket) {
 		if(q.name){
 			where.name = {$like:'%'+q.name+'%'};
 		}
-
-		if(q.label_ids && q.label_ids.length >=1){
-			var where_labels = {};
-			where_labels.label_id = {$in:q.label_ids};
+		if(q.message){
+			if(!(include instanceof Array)){
+				include = [];
+			}
+			include.push({
+				model:FBMessage,
+				where:{
+					message:{$like:'%'+q.message+'%'}
+				}
+			});
 		}
-		console.log(where);
 
-		(()=>{
-			return FBConversation.findAll({
-				where:where,
-				include:[{
-					model:FBLabel,
-					where:where_labels
-				}],
-				order:[['updated_time','DESC']],
-				limit:q.limit
-			}).then(sequelizeHandler)
-			.catch(sequelizeErrorHandler);		  
-		})()
+		var condition = {
+			where:where,
+			order:[['updated_time','DESC']],
+			limit:q.limit
+		};
+		if(include && include.length >=1){
+			condition.include = include;
+		}
+
+		console.log(condition);
+
+
+		return FBConversation.findAll(condition)
+		.then(sequelizeHandler)
 		.then(function(Instances){
+			console.log('$$$ what happened inside here');
+			console.log(Instances);
 			if(Instances){
+				console.log(Instances.length);
 				r.FBConversations = Instances;
 				var t_mids = r.FBConversations.map((FBConversation,i)=>(FBConversation.t_mid));
 				return FBConversation.findAll({
@@ -434,8 +512,9 @@ io.on('connection', function(socket) {
 					order:[['updated_time','DESC']],
 				}).then(sequelizeHandler);
 			}else{
-				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:q.pid});				
-				throw new SequelizeNoResultError('FBConversation.findAll');
+				console.log('$$$ WHY DO NOT GO INSIDE THIS THROW');
+				winston.error('SequelizeNoResultError',{f:'FBConversation.findAll',pid:q.pid,message:'Conversation you search for is not found'});				
+				throw new SequelizeNoResultError('Conversation you search for is not found');
 			}
 		}).then(function(Instances){
 			if(Instances){
@@ -457,7 +536,9 @@ io.on('connection', function(socket) {
 				throw new SequelizeNoResultError('FBConversation.findAll');
 			}
 		}).catch(function(err){
+			console.log('$$$ INSIDE CATCH');
 			if(err instanceof SequelizeNoResultError){
+				console.log('$$$ IS ERR');
 				socket.emit('NO_DATA', {
 					error:err.name,
 					message:'No Conversations matches the filter'
@@ -1218,10 +1299,9 @@ router.get('/labels',function(req,res){
 router.get('/test',function(req,res){
 	var q = {t_mid:req.query.t_mid};
 	var r = {};
-	console.log('$$$ INSIDE TEST')
+
 	FBConversation.findOne({where:{t_mid:q.t_mid}})
 	.then(function(Instance){
-		console.log('$$$ INSIDE TEST 2')
 		r.FBConversation = Instance;
 		return FBConversation.upsert({
 			t_mid:r.FBConversation.t_mid,
@@ -1234,10 +1314,8 @@ router.get('/test',function(req,res){
 			snippet:undefined
 		},{where: {t_mid: q.t_mid}});
 	}).then(function(success){
-		console.log('$$$ INSIDE TEST 3')
 		return FBConversation.findOne({where:{t_mid:q.t_mid}});
 	}).then(function(Instance){
-		console.log('$$$ INSIDE TEST 4')
 		res.send({before:r.FBConversation,after:Instance});
 	});
 });
@@ -1737,8 +1815,6 @@ function sendReadReceipt(recipientId) {
 function callSendAPI(message_data,action_type,conversation_info=null) {
 
 	var r = conversation_info ? conversation_info : {};
-	console.log('$$$ callSendAPI');
-	console.log(r);
 
 	if(r.pid === undefined && r.t_mid === undefined){
 		winston.error('Error',{f:'callSendAPI',pid:r.pid,t_mid:r.t_mid});
@@ -2175,8 +2251,6 @@ function findOneConversation(t_mid){
 }
 
 function upsertConversation(Conversation,psid,replied_last_by=null){
-	console.log('$$$ upsertConversation');
-	console.log(replied_last_by);
 	return FBConversation.upsert({
 		pid: Conversation.participants.data[1].id,
 		uid: Conversation.participants.data[0].id,
@@ -2190,7 +2264,7 @@ function upsertConversation(Conversation,psid,replied_last_by=null){
 		message_count: Conversation.message_count,
 		unread_count: Conversation.unread_count,
 		replied_last_by:replied_last_by ? replied_last_by : undefined,
-		replied_last_time:replied_last_by ? moment().format('YYYY-MM-DD HH:mm:ss') : undefined
+		replied_last_time:replied_last_by ? moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss') : undefined
 	},{
 		where: {
 			t_mid: Conversation.id,
@@ -2257,7 +2331,6 @@ function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
 										{	limit:100,
 											total_count:null,
 											matchFunc:((x,i)=>{
-												console.log('$$$ MATCHFUNC');
 												console.log(parseInt(x.participants.data[0].id,10)+'='+parseInt(r.uid,10));
 												if(parseInt(x.participants.data[0].id,10) === parseInt(r.uid,10)){
 													return true;
