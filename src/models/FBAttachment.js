@@ -27,7 +27,7 @@ module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
       },
       "m_mid": {
         "type": "VARCHAR(64)",
-        "allowNull": false,
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },

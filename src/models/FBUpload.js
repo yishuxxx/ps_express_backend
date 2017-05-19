@@ -42,6 +42,18 @@ module.exports.FBUploadFunc = function(Sequelize,sequelize){
           "allowNull": false,
           "defaultValue": null,
           "primaryKey": false
+        },
+        "pid": {
+          "type": "BIGINT(20) UNSIGNED",
+          "allowNull": true,
+          "defaultValue": null,
+          "primaryKey": false
+        },
+        "attachment_id": {
+          "type": "VARCHAR(64)",
+          "allowNull": true,
+          "defaultValue": null,
+          "primaryKey": false
         }
       },{
         tableName:'fb_upload',

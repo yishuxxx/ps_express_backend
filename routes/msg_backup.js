@@ -31,17 +31,14 @@ let Employee = EmployeeFunc(Sequelize, sequelize);
 
 let {FBMessageFunc} = require('../src/models/FBMessage');
 let FBMessage = FBMessageFunc(Sequelize, sequelize);
-let {FBMessageAttachmentFunc} = require('../src/models/FBMessageAttachment');
-let FBMessageAttachment = FBMessageAttachmentFunc(Sequelize, sequelize);
-let {FBAttachmentFunc} = require('../src/models/FBAttachment');
-let FBAttachment = FBAttachmentFunc(Sequelize, sequelize);
-
 let {FBCommentFunc} = require('../src/models/FBComment');
 let FBComment = FBCommentFunc(Sequelize, sequelize);
 let {FBConversationFunc} = require('../src/models/FBConversation');
 let FBConversation = FBConversationFunc(Sequelize, sequelize);
 let {FBPageFunc} = require('../src/models/FBPage');
 let FBPage = FBPageFunc(Sequelize, sequelize);
+let {FBAttachmentFunc} = require('../src/models/FBAttachment');
+let FBAttachment = FBAttachmentFunc(Sequelize, sequelize);
 let {FBLabelFunc} = require('../src/models/FBLabel');
 let FBLabel = FBLabelFunc(Sequelize, sequelize);
 let {FBConversationLabelFunc} = require('../src/models/FBConversationLabel');
@@ -53,16 +50,11 @@ let FBSReply = FBSReplyFunc(Sequelize, sequelize);
 
 FBConversation.hasMany(FBMessage, {foreignKey:'t_mid'});
 FBMessage.belongsTo(FBConversation, {foreignKey:'t_mid'});
-//FBMessage.hasMany(FBAttachment, {foreignKey:'m_mid'});
+FBMessage.hasMany(FBAttachment, {foreignKey:'m_mid'});
 FBMessage.belongsTo(Employee, {foreignKey:'id_employee'});
-//FBAttachment.belongsTo(FBMessage, {foreignKey:'m_mid'});
+FBAttachment.belongsTo(FBMessage, {foreignKey:'m_mid'});
 FBLabel.belongsToMany(FBConversation, {through:FBConversationLabel, foreignKey:'label_id', otherKey:'t_mid'});
 FBConversation.belongsToMany(FBLabel, {through:FBConversationLabel, foreignKey:'t_mid', otherKey:'label_id'});
-
-FBMessage.belongsToMany(FBAttachment, {through:FBMessageAttachment, foreignKey:'m_mid', otherKey:'attachment_id'});
-FBAttachment.belongsToMany(FBMessage, {through:FBMessageAttachment, foreignKey:'attachment_id', otherKey:'m_mid'});
-
-
 
 let PAGE_ACCESS_TOKEN_LONG;
 let PAGE_ACCESS_TOKEN_MESSENGER;
@@ -82,13 +74,11 @@ let initialize = function() {
 	});
 };
 initialize();
-let READINGS = [];
 
 let numUsers = 0;
 //io.set('transports', ['websocket']);
 io.on('connection', function(socket) {
 	console.log('connected to socket client');
-	console.log('socket_id='+socket.id);
 	console.log(socket.request.user);
 	socket.emit('GET_ME',socket.request.user);
 
@@ -172,23 +162,6 @@ io.on('connection', function(socket) {
 		});
 	});
 
-	socket.on('GET_READINGS',function(data) {
-		socket.emit('GET_READINGS',READINGS);
-	});
-
-	socket.on('ADD_READING',function(data) {
-		var read = {t_mid:data.t_mid,id_employee:data.id_employee,socket_id:socket.id};
-		READINGS = deleteReadings(READINGS,read.id_employee);		
-		READINGS.push(read);
-		socket.broadcast.emit('ADD_READING',read);
-	});
-/*
-	socket.on('DELETE_READINGS',function(data) {
-		var read = {t_mid:data.t_mid,id_employee:data.id_employee,socket_id:socket.id};
-		READINGS = deleteReadings(READINGS,read.id_employee,read.socket_id,read.t_mid);
-		socket.broadcast.emit('DELETE_READINGS',read);
-	});
-*/
 	socket.on('UPDATE_CONVERSATION_LABELS', function(data) {
 		console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) START =========================');
 
@@ -293,7 +266,6 @@ io.on('connection', function(socket) {
 				r.psid = r.FBConversation.psid ? r.FBConversation.psid : undefined;
 				r.FBConversation.engage_by = q.id_employee;
 				r.FBConversation.engage_time = moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss');
-				r.FBConversation.engage_release = 0;
 				return r.FBConversation.save();
 			}else{
 				winston.error('SequelizeNoResultError',{message:'Cannot engage conversation that is not in database'});
@@ -359,7 +331,8 @@ io.on('connection', function(socket) {
 				console.log(Instances.length);
 				r.FBConversations = Instances;
 				return Sequelize.Promise.mapSeries(r.FBConversations,function(FBConversation,i){
-					FBConversation.engage_release = 1;
+					FBConversation.engage_by = null;
+					FBConversation.engage_time = null;
 					return FBConversation.save();
 				});
 			}else{
@@ -840,8 +813,8 @@ io.on('connection', function(socket) {
 			console.log(file_infos[0].name);
 			console.log(file_infos.length);
 			var file_info = file_infos[i];
-			var length = file_info.filename_ori.length;
-			file_info.filename = randomString('16','#a')+'.'+file_info.filename_ori.substring(length-3,length);
+			var length = file_info.name.length;
+			file_info.filename = randomString('16','#a')+'.'+file_info.name.substring(length-3,length);
 			var stream = fs.createWriteStream(BASEDIR_IMAGE+file_info.filename);
 			stream.once('open', function(fd) {
 			  stream.write(file_buffer);
@@ -873,7 +846,7 @@ io.on('connection', function(socket) {
   			console.log(attachment_ids);
 			return Sequelize.Promise.mapSeries(file_infos,function(file_info,i){
 				return FBUpload.create({
-					name:file_info.name ? file_info.name : file_info.filename_ori,
+					name:file_info.name,
 					type:file_info.type,
 					filename:file_info.filename,
 					created_by:socket.request.user.id_employee,
@@ -941,35 +914,26 @@ io.on('connection', function(socket) {
 			attachment_id:data.attachment_id
 		};
 
-		new Sequelize.Promise(function(resolve,reject){
-			
-			if(typeof q.attachment_id !== 'undefined'){
-				FBUpload.findOne({where:{attachment_id:q.attachment_id}})
-				.then(sequelizeHandler)
-				.then(function(Instance){
-					if(Instance){
-						resolve(Instance);
-					}else{
-						winston.error('SequelizeNoResultError',{f:'FBUpload.findOne',message:'FBUpload.findOne(attachment_id) No Results, attachment_id='+q.attachment_id});
-						throw new SequelizeNoResultError('FBUpload.findOne(attachment_id) No Results, attachment_id='+q.attachment_id);
-					}
+		FBUpload.findOne({where:{attachment_id:q.attachment_id}})
+		.then(function(Instance){
+			if(Instance){
+				return FBSReply.create({
+					title:q.title,
+					message:q.message,
+					upload_filename:Instance.filename,
+					attachment_id:q.attachment_id,
+					id_employee:socket.request.user.id_employee
 				});
 			}else{
-				resolve(false);
+				winston.error('SequelizeNoResultError',{f:'FBUpload.findOne',message:'FBUpload.findOne(attachment_id) No Results, attachment_id='+q.attachment_id});
+				throw new SequelizeNoResultError('FBUpload.findOne(attachment_id) No Results, attachment_id='+q.attachment_id);
 			}
-		}).then(function(Instance){
-			return FBSReply.create({
-				title:q.title,
-				message:q.message,
-				upload_filename:Instance ? Instance.filename : undefined,
-				attachment_id:Instance ? Instance.attachment_id : undefined,
-				id_employee:socket.request.user.id_employee
-			});
 		}).then(function(Instance){
 			if(Instance){
 				socket.emit('ADD_SREPLY',{FBSReply:Instance});
 			}
 		});
+
 	});
 
 	socket.on('DELETE_SREPLIES',function(data){
@@ -1018,16 +982,6 @@ io.on('connection', function(socket) {
 
 	// when the user disconnects.. perform this
 	socket.on('disconnect', function() {
-		console.log('disconnect');
-		console.log('socket_id='+socket.id);
-		console.log(socket.request.user);
-		READINGS = deleteReadings(READINGS,socket.request.user.id_employee,socket.id);
-		io.local.emit('DELETE_READINGS', {
-			id_employee:socket.request.user.id_employee,
-			socket_id:socket.id
-		});
-
-
 		if (addedUser) {
 			--numUsers;
 
@@ -1239,27 +1193,6 @@ router.get('/countcomments', function(req, res) {
 			console.log(err);
 	});
 });
-
-
-router.get('/upgrade',function(req,res){
-	var r = {};
-	FBAttachment.findAll({attributes:['attachment_id','m_mid']})
-	.then(function(Instances){
-		if(Instances){
-			r.FBAttachments = Instances;
-			return Sequelize.Promise.mapSeries(r.FBAttachments,function(FBAttachment,i){
-				return FBMessageAttachment.create({
-					m_mid_attachment_id:FBAttachment.m_mid+'_'+FBAttachment.attachment_id,
-					m_mid:FBAttachment.m_mid,
-					attachment_id:FBAttachment.attachment_id
-				});
-			});
-		}
-	}).then(function(unknown){
-		res.send({length:unknown.length});
-	});
-});
-
 
 router.get('/test',function(req,res){
 	var q = {t_mid:req.query.t_mid};
@@ -2127,20 +2060,20 @@ function upsertMessages(t_mid,Messages){
 			created_time: Message.created_time,
 			uid_from: Message.from.id,
 			uid_to: Message.to.data[0].id,
-			message: Message.message
-			//attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
+			message: Message.message,
+			attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
 		},{
 			where: {m_mid: Message.id}
 		}).then(sequelizeHandler)
 		.then(function(FBMessage){
-			//console.log(FBMessage);
+			console.log(FBMessage);
 			//IMAGES, VIDEO, AUDIO FROM PAGE & USER
 			if(Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
 				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
 					return FBAttachment.upsert({
 						attachment_id:Attachment.id,
-						//m_mid:Message.id,
+						m_mid:Message.id,
 						mime_type:Attachment.mime_type,
 						name:Attachment.name,
 						image_data:JSON.stringify(Attachment.image_data),
@@ -2149,16 +2082,7 @@ function upsertMessages(t_mid,Messages){
 						video_data:JSON.stringify(Attachment.video_data)
 					},{
 						where:{attachment_id:Attachment.id}
-					}).then(sequelizeHandler)
-					.then(function(unknown){
-						return FBMessageAttachment.upsert({
-							m_mid_attachment_id:Message.id+'_'+Attachment.id,
-							m_mid:Message.id,
-							attachment_id:Attachment.id
-						},{
-							where:{m_mid_attachment_id:Message.id+'_'+Attachment.id}
-						}).then(sequelizeHandler);
-					});
+					}).then(sequelizeHandler);
 				});
 			}
 		}).catch(sequelizeErrorHandler);
@@ -2174,61 +2098,42 @@ function upsertMessage(t_mid,Messages,event,id_employee){
 			uid_from: Message.from.id,
 			uid_to: Message.to.data[0].id,
 			message: Message.message,
-			//attachment_id: Message.attachments ? Message.attachments.data[0].id : null,
+			attachment_id: Message.attachments ? Message.attachments.data[0].id : null,
 			delivery_timestamp: (event && event.delivery) ? event.timestamp : null,
 			read_timestamp: (event && event.read) ? event.timestamp : null,
 			id_employee: id_employee ? id_employee : null
 		},{
 			where: {m_mid: Message.id}
 		}).then(sequelizeHandler)
-		.then(function(unknown){
+		.then(function(FBMessage){
 			//IMAGES, VIDEO, AUDIO FROM PAGE & USER			
-			if(Message.attachments && Message.attachments.data.length >= 1){
+			if(FBMessage && Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
 				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
 					return FBAttachment.upsert({
 						attachment_id:Attachment.id,
-						//m_mid:Message.id,
+						m_mid:Message.id,
 						mime_type:Attachment.mime_type,
 						name:Attachment.name,
 						image_data:JSON.stringify(Attachment.image_data),
 						file_url:Attachment.file_url,
 						size:Attachment.size,
 						video_data:JSON.stringify(Attachment.video_data)
-					}).then(sequelizeHandler)
-					.then(function(unknown){
-						return FBMessageAttachment.upsert({
-							m_mid_attachment_id:Message.id+'_'+Attachment.id,
-							m_mid:Message.id,
-							attachment_id:Attachment.id
-						},{
-							where:{m_mid_attachment_id:Message.id+'_'+Attachment.id}
-						}).then(sequelizeHandler);
-					});
+					}).then(sequelizeHandler).catch(sequelizeErrorHandler);
 				});
 			//STICKERS FROM USERS ONLY
-			}else if(!Message.attachments && event && event.message && event.message.attachments && event.message.sticker_id){
+			}else if(!Message.attachments && event && event.message && event.message.attachments){
 				return Sequelize.Promise.mapSeries(event.message.attachments,function(attachment,i,N){
-					//var attachment_id_generated = 'sid_'+randomString('16','#Aa');
-					var attachment_id_generated = 'sid_'+event.message.sticker_id;
 					return FBAttachment.upsert({
-						attachment_id: attachment_id_generated,
-						//m_mid: Message.id,
+						attachment_id: 'sid_'+randomString('16','#Aa'),
+						m_mid: Message.id,
 						type: attachment.type,
 						payload: JSON.stringify(attachment.payload),
 						sticker_id: event.message.sticker_id ? event.message.sticker_id : null,
 					},{
 						where:{sticker_id:event.message.sticker_id,m_mid:Message.id}
 					}).then(sequelizeHandler)
-					.then(function(unknown){
-						return FBMessageAttachment.upsert({
-							m_mid_attachment_id:Message.id+'_'+attachment_id_generated,
-							m_mid:Message.id,
-							attachment_id:attachment_id_generated
-						},{
-							where:{m_mid_attachment_id:Message.id+'_'+attachment_id_generated}
-						}).then(sequelizeHandler);
-					});
+					.catch(sequelizeErrorHandler);
 				});
 			}else{
 				//skip to next then
@@ -2583,32 +2488,6 @@ function syncLabels(PAGE_ACCESS_TOKEN, pid){
 		});
 	});
 
-}
-
-function deleteReadings(readings,id_employee,socket_id,t_mid){
-	if(typeof t_mid === 'undefined' && typeof socket_id === 'undefined'){
-		readings = readings.filter((reading,i)=>{
-			if(reading.id_employee === id_employee){
-				return false;
-			}
-			return true;
-		});
-	}else if(typeof t_mid === 'undefined'){
-		readings = readings.filter((reading,i)=>{
-			if(reading.socket_id === socket_id){
-				return false;
-			}
-			return true;
-		});
-	}else{
-		readings = readings.filter((reading,i)=>{
-			if(reading.id_employee === id_employee && reading.socket_id === socket_id && reading.t_mid === t_mid){
-				return false;
-			}
-			return true;
-		});
-	}
-	return readings;
 }
 
 function toMMID(id){

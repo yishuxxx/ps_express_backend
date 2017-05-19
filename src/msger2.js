@@ -3,7 +3,7 @@
 import React, {Component} from 'react';
 import {render,findDOMNode} from 'react-dom';
 import { createStore } from 'redux';
-import { Grid, Row, Col, OverlayTrigger, Tooltip } from 'react-bootstrap';
+import { Grid, Row, Col, OverlayTrigger, Tooltip, Popover } from 'react-bootstrap';
 import moment from 'moment';
 import Immutable from 'seamless-immutable';
 //FOR Chat
@@ -99,6 +99,53 @@ var reducer = function(state=Immutable([]),action=null){
 
       state = Immutable.setIn(state, ["Pages", page_i, "FBLabels"], action.FBLabels);
       break;
+
+    case 'GET_READINGS':
+      state = Immutable.setIn(state, ['readings'], action.readings);
+      break;
+
+    case 'ADD_READING':
+
+      function deleteReadings(readings,id_employee,socket_id,t_mid){
+        if(typeof t_mid === 'undefined' && typeof socket_id === 'undefined'){
+          readings = readings.filter((reading,i)=>{
+            if(reading.id_employee === id_employee){
+              return false;
+            }
+            return true;
+          });
+        }else if(typeof t_mid === 'undefined'){
+          readings = readings.filter((reading,i)=>{
+            if(reading.socket_id === socket_id){
+              return false;
+            }
+            return true;
+          });
+        }else{
+          readings = readings.filter((reading,i)=>{
+            if(reading.id_employee === id_employee && reading.socket_id === socket_id && reading.t_mid === t_mid){
+              return false;
+            }
+            return true;
+          });
+        }
+        return readings;
+      }
+
+      var readings = Immutable.asMutable(state.readings);
+      readings = deleteReadings(readings,action.reading.id_employee);
+      readings.push(action.reading);
+      state = Immutable.setIn(state, ['readings'], readings);
+      break;
+
+    case 'DELETE_READINGS':
+      /*
+      var readings = Immutable.asMutable(state.readings);
+      readings = deleteReadings(readings,action.id_employee,action.socket_id,action.t_mid);
+      state = Immutable.setIn(state, ['readings'], readings);
+      */
+      break;
+  
     case 'GET_CONVERSATIONS':
       var pid = action.pid;
       var page_i = state.Pages.findIndex((x,i)=>(parseInt(x.pid,10) === parseInt(pid,10)));
@@ -272,10 +319,10 @@ var reducer = function(state=Immutable([]),action=null){
       break;
 
     case 'DELETE_FILES':
-      var filenames = action.filenames;
+      var attachment_ids = action.attachment_ids;
       var Uploads = Immutable.asMutable(state.Uploads);
       Uploads = Uploads.filter((Upload,i)=>{
-        return filenames.indexOf(Upload.filename) === -1;
+        return attachment_ids.indexOf(Upload.attachment_id) === -1;
       });
       state = Immutable.setIn(state, ["Uploads"], Uploads);
       break;
@@ -313,16 +360,20 @@ class MessageManager extends Component{
     super(props,context);
     //this.state = {has_message:false};
     this.state = {auto_scroll_locked:false};
+    this.emojis = [
+      '😄','😅','😇','😊','😱','😝','😣','😭','👌','👍','🙏'
+    ];
   }
 
   componentDidMount() {
-      const messageList = findDOMNode(this.messageList)
-      messageList.addEventListener('scroll', this._handleScroll);
+      //const messageList = findDOMNode(this.messageList)
+      //messageList.addEventListener('scroll', this._handleScroll);
+      $('[data-toggle="popover"]').popover();
   }
 
   componentWillUnmount() {
-      const messageList = findDOMNode(this.messageList)
-      messageList.removeEventListener('scroll', this._handleScroll);
+      //const messageList = findDOMNode(this.messageList)
+      //messageList.removeEventListener('scroll', this._handleScroll);
   }
 
   componentDidUpdate() {
@@ -417,12 +468,22 @@ class MessageManager extends Component{
     this.messageList.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
   }
 
+  handleSelectEmoji(event) {
+    this.message_create.value = this.message_create.value + event.target.innerHTML;
+  }
+
   render(){
     var Messages = this.props.messages ? this.props.messages.data : [];
     var page_id = this.props.page_id;
     //var message_create = this.state.message_create;
     var message_count = this.props.message_count;
     var FBLabels = this.props.FBLabels;
+    var EmojiSelector = 
+    <Popover id="popover-positioned-top">
+      {this.emojis.map((emoji,i)=>(
+        <span key={'emoji'+i} className="emoji_icon" onClick={this.handleSelectEmoji.bind(this)}>{emoji}</span>
+      ))}
+    </Popover>;
 
     return(
       <section className="MessageManager">
@@ -565,14 +626,9 @@ class MessageManager extends Component{
             Uploads={this.props.Uploads}
             psid={this.props.ConversationC ? this.props.ConversationC.psid : undefined}
           />
-          <button type="button" 
-            className="btn btn-sm btn-default" 
-            data-container="body" 
-            data-toggle="popover" 
-            data-placement="top" 
-            data-content={'♍♒'}>
-            Emojis
-          </button>
+          <OverlayTrigger trigger="click" placement="top" overlay={EmojiSelector}>
+            <button className="btn btn-sm btn-default">😛</button>
+          </OverlayTrigger>
 
         </section>
 
@@ -582,7 +638,7 @@ class MessageManager extends Component{
               className="form-control"
               name="message_create"
               ref={(message_create) => {this.message_create = message_create}}
-              rows="2"
+              rows="8"
               onKeyPress={this.handleKeyPress}
             />
             <div className={"input-group-addon send-message active"} onClick={this.handleConversationMessageSubmit}>
@@ -892,8 +948,31 @@ class Modal extends Component{
 class UploadManager extends Component{
   constructor(props) {
     super(props);
-    this.state = {highlights:[]};
+    this.state = {highlights:[],search_text:'',Uploads:props.Uploads};
   }
+
+  componentWillReceiveProps(nextProps) {
+    this.setState({Uploads:this.filterUploads(nextProps.Uploads,this.state.search_text)});
+  }
+
+  handleSearch = (event) =>{
+    var search_text = event.target.value;
+    this.setState({search_text:search_text,Uploads:this.filterUploads(this.props.Uploads,search_text)});
+  }
+
+  filterUploads = (Uploads,search_text) => {
+    search_text = search_text.toLowerCase();
+    if(search_text && search_text !== ''){
+      Uploads = Uploads.filter((Upload)=>{
+        if(Upload.name.toLowerCase().indexOf(search_text) !== -1){
+          return true;
+        }
+        return false;
+      });
+    }
+    return Uploads;
+  }
+
 
   handleAddFiles = (event) =>{
     var cman_i = this.props.cman_i;
@@ -901,12 +980,15 @@ class UploadManager extends Component{
     //var image_upload_preview = this.image_upload_preview;
     var file_buffers = [];
     var file_infos = [];
+    var name = this.upload_name_create.value;
+    this.upload_name_create.value = '';
 
     if(files && files.length >=1){
 
       for(var i=0;i<files.length;i++){
         file_infos.push({
-          name:files[i].name,
+          filename_ori:files[i].name,
+          name:name,
           type:files[i].type,
           size:files[i].size,
           lastModified:files[i].lastModified
@@ -939,14 +1021,18 @@ class UploadManager extends Component{
 
   handleHighlight = (event) =>{
     var highlights = this.state.highlights;
-    var filenames_selected = event.target.attributes.getNamedItem('data-filename').value;
-    var index = highlights.indexOf(filenames_selected);
+    console.log('$$$ HIGHLIGHT');
+    console.log(highlights);
+    var attachment_id_selected = event.target.attributes.getNamedItem('data-attachment-id').value;
+    var index = highlights.indexOf(attachment_id_selected);
     if(index === -1){
-      highlights.push(filenames_selected);
+      highlights.push(attachment_id_selected);
     }else{
       highlights.splice(index, 1);
     }
-    this.setState({highlights:highlights})
+    this.setState({highlights:highlights});
+    console.log(attachment_id_selected);
+    console.log(highlights);
   }
 
   handleSend = (event) =>{
@@ -954,23 +1040,23 @@ class UploadManager extends Component{
     var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     var cman_i = this.props.cman_i;
-    var filenames = this.state.highlights;
+    var attachment_ids = this.state.highlights;
 
     //var Uploads = this.props.Uploads;
     //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
     //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
-    sendMessage(pid,cman_i,t_mid,null,filenames);
+    sendMessage(pid,cman_i,t_mid,null,attachment_ids);
   }
 
   handleDelete = (event) =>{
     console.log('HANDLE DELETE');
-    var filenames = this.state.highlights;
-    deleteFiles(filenames);
+    var attachment_ids = this.state.highlights;
+    deleteFiles(attachment_ids);
   }
 
   render(){
     var cman_i = this.props.cman_i;
-    var Uploads = this.props.Uploads;
+    var Uploads = this.state.Uploads;
     var psid = this.props.psid;
     var footer = 
       <div>
@@ -980,26 +1066,51 @@ class UploadManager extends Component{
 
     return(
       <span className="UploadManager">
-        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#cman_modal'+cman_i} disabled={psid ? false : true}><span className="glyphicon glyphicon-picture" aria-hidden="true"></span>Images</button>
+        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#cman_modal'+cman_i} disabled={psid ? false : true}><span className="glyphicon glyphicon-picture" aria-hidden="true"></span></button>
         <Modal
           title={'Images'}
           modal_id={'cman_modal'+cman_i}
           footer={footer}
           >
 
+          <div className="form-group">
+            <label>Search</label>
+            <input type="text" className="form-control" onChange={this.handleSearch} value={this.state.search_text} />
+          </div>
+
           <section className="FileSelector">
             {Uploads.map((Upload,i)=>(
-              <div key={'upload_id_'+Upload.filename} className={"thumbnail_box"+(this.state.highlights.indexOf(Upload.filename) !== -1 ? ' active' : '') }>
-                <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-filename={Upload.filename} onClick={this.handleHighlight}/>
-              </div>
+              <OverlayTrigger 
+                key={'overlay_upload_id_'+Upload.upload_id}
+                placement={'top'} 
+                overlay={
+                  <Tooltip id="tooltip">{Upload.name}</Tooltip>
+                }
+              >
+                <div key={'upload_id_'+Upload.upload_id} className={"thumbnail_box"+(this.state.highlights.indexOf(Upload.attachment_id) !== -1 ? ' active' : '') }>
+                  <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-attachment-id={Upload.attachment_id} onClick={this.handleHighlight}/>
+                </div>
+              </OverlayTrigger>
             ))}
           </section>
 
           <button className="btn btn-warning" onClick={this.handleDelete}>DELETE</button>
 
-          <section className="FileUploader">
-            <input className="form-control" type="file" onChange={this.handleAddFiles} />
-          </section>
+          <Row>
+          <Col md={6}>
+            <section className="FileUploader">
+              <h4>{'Upload a new attachment'}</h4>
+              <div className="form-group">
+                <input type="text" className="form-control" placeholder="name" ref={(node)=>{this.upload_name_create = node}}/>
+              </div>
+
+              <input className="form-control" type="file" onChange={this.handleAddFiles} />
+            </section>
+          </Col>
+          </Row>
+
+
+
 
           
         </Modal>
@@ -1053,7 +1164,8 @@ class SReplyManager extends Component{
   }
 
   handleSelectImage = (event) =>{
-    this.setState({image_selected:event.target.attributes.getNamedItem('data-filename').value})
+    console.log('$$$ '+event.target.attributes.getNamedItem('data-attachment-id').value);
+    this.setState({image_selected:event.target.attributes.getNamedItem('data-attachment-id').value});
   }
 
   handleClearImageSelection = (event) =>{
@@ -1063,12 +1175,14 @@ class SReplyManager extends Component{
   handleAdd = (event) =>{
     var title = this.sreply_title_create.value;
     var message = this.sreply_message_create.value;
-    var filename = this.state.image_selected;
+    if(message !== '' && title !== ''){
+      var attachment_id = this.state.image_selected;
 
-    addSReply(title,message,filename);
-    this.sreply_title_create.value = '';
-    this.sreply_message_create.value = '';
-    this.setState({image_selected:''});
+      addSReply(title,message,attachment_id);
+      this.sreply_title_create.value = '';
+      this.sreply_message_create.value = '';
+      this.setState({image_selected:''});
+    }
   }
 
   handleSelect = (event) =>{
@@ -1090,12 +1204,14 @@ class SReplyManager extends Component{
     var cman_i = this.props.cman_i;
     var sreply_id = typeof sreply_id_selected !== 'undefined' ? sreply_id_selected : this.state.sreply_id_selected;
     var SReply = this.props.SReplies.find((x)=>(x.sreply_id === sreply_id));
-    var filename = SReply.upload_filename;
+    var attachment_id = SReply.attachment_id;
     var message = SReply.message;
     //var Uploads = this.props.Uploads;
     //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
     //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
-    sendMessage(pid,cman_i,t_mid,null,[filename]);
+    if(typeof attachment_id !== 'undefined'){
+      sendMessage(pid,cman_i,t_mid,null,[attachment_id]);
+    }
     sendMessage(pid,cman_i,t_mid,message);
   }
 
@@ -1161,13 +1277,13 @@ class SReplyManager extends Component{
                 data-dismiss={this.state.select_to_send ? 'modal' : false}
               >
                 <div className="title">{SReply.title}</div>
-                <img className="sreply_image_thumbnail" src={BASEDIR+'/msg/media/'+SReply.upload_filename}/>
+                {SReply.upload_filename ? <img className="sreply_image_thumbnail" src={BASEDIR+'/msg/media/'+SReply.upload_filename}/> : null}
                 <div className="text"><TextExpand cutoff={50}>{SReply.message}</TextExpand></div>
               </div>
             ))}
             <div className="clear"></div>
           </section>
-          <button className="btn btn-danger" onClick={this.handleDelete}>DELETE</button>
+          <button className="btn btn-warning" onClick={this.handleDelete}>DELETE</button>
 
           <button className="btn btn-primary pull-right" onClick={this.handleSend} data-dismiss="modal">SEND</button>
 
@@ -1196,13 +1312,13 @@ class SReplyManager extends Component{
               ?
               <div>
                 <button className="btn btn-default btn-sm" onClick={this.handleClearImageSelection}>Choose Photo</button>
-                <img className="selected_image_thumbnail" src={BASEDIR+'/msg/media/'+this.state.image_selected}/>
+                <img className="selected_image_thumbnail" src={BASEDIR+'/msg/media/'+Uploads.find((Upload)=>(Upload.attachment_id === this.state.image_selected)).filename}/>
               </div>
               :
               <section className="FileSelector">
                 {Uploads.map((Upload,i)=>(
-                  <div key={'sreply_upload_id_'+Upload.filename} className={"thumbnail_box"+(this.state.image_selected == Upload.filename ? ' active' : '') }>
-                    <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-filename={Upload.filename} onClick={this.handleSelectImage}/>
+                  <div key={'sreply_upload_id_'+Upload.upload_id} className={"thumbnail_box"+(this.state.image_selected === Upload.attachment_id ? ' active' : '') }>
+                    <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-attachment-id={Upload.attachment_id} onClick={this.handleSelectImage}/>
                   </div>
                 ))}
               </section>
@@ -1254,6 +1370,10 @@ class ConversationCard extends Component{
     event.stopPropagation();
     this.props.setConversationSelected(t_mid);
     getMessages(pid,t_mid,true);
+    addReading(t_mid);
+    if(this.props.ConversationC){
+      deleteReadings(this.props.ConversationC.t_mid);
+    }
   }
 
   render(){
@@ -1270,6 +1390,7 @@ class ConversationCard extends Component{
       }
       */
     }
+    var readings_c = this.props.readings.filter((reading)=>(reading.t_mid === this.props.Conversation.t_mid));
 
     return(
       <section 
@@ -1309,19 +1430,26 @@ class ConversationCard extends Component{
             </div>
 
             <div>
-              <span className="label label-success engage_box">
-              {( this.props.Conversation.engage_by && moment().diff(moment(this.props.Conversation.engage_time),'seconds') <= 3600 )
-                ? getEmployeeFirstname(this.props.Conversation.engage_by)
+              { readings_c.length>=1
+                ? readings_c.map((reading)=>(
+                    <span key={'reading_'+reading.id_employee+reading.socket_id+reading.t_mid} className="label label-warning reading_box">{getEmployeeFirstname(reading.id_employee)}</span>
+                  ))
                 : null
               }
-              </span>
 
-              <span className="label label-info last_replied_box">
-              {this.props.Conversation.replied_last_by
-                ? getEmployeeFirstname(this.props.Conversation.replied_last_by)
+              
+              {    (this.props.Conversation.engage_by)
+                && (moment().diff(moment(this.props.Conversation.engage_time),'seconds') <= 3600)
+                && (this.props.Conversation.engage_release !== 1)
+                ? <span className="label label-success engage_box">{getEmployeeFirstname(this.props.Conversation.engage_by)}</span>
                 : null
               }
-              </span>
+
+              
+              {this.props.Conversation.replied_last_by
+                ? <span className="label label-info last_replied_box">{getEmployeeFirstname(this.props.Conversation.replied_last_by)}</span>
+                : null
+              }
             </div>
 
             <div className="label_box">
@@ -1497,6 +1625,7 @@ class ConversationManager extends Component{
                                 pid={this.props.ConvManager.pid}
                                 i={index}
                                 setConversationSelected={this.setConversationSelected}
+                                readings={this.props.readings}
                               />
                     }else{
                       return null;
@@ -1559,7 +1688,7 @@ class MessengerApp extends Component{
         <div 
           className={
             this.props.state.connection_status === 'DISCONNECTED' 
-              ? 'alert alert-danger' 
+              ? 'alert alert-warning' 
               : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'alert alert-warning' : '')}
         >
           {this.props.state.connection_status === 'DISCONNECTED' 
@@ -1590,6 +1719,7 @@ class MessengerApp extends Component{
                   cman_i={0}
                   Uploads={this.props.state.Uploads}
                   SReplies={this.props.state.SReplies}
+                  readings={this.props.state.readings}
                 />
               : null
             }
@@ -1604,6 +1734,7 @@ class MessengerApp extends Component{
                   cman_i={1}
                   Uploads={this.props.state.Uploads}
                   SReplies={this.props.state.SReplies}
+                  readings={this.props.state.readings}
                 />
               : null
             }
@@ -1677,6 +1808,38 @@ socket.on('GET_LABELS', function (data) {
   rerender();
 });
 
+socket.on('GET_READINGS', function (data) {
+  console.log('ON GET_READINGS');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_READINGS',
+    readings:data
+  });
+  rerender();
+});
+
+socket.on('ADD_READING', function (data) {
+  console.log('ON ADD_READING');
+  console.log(data);
+  rstore.dispatch({
+    type:'ADD_READING',
+    reading:data
+  });
+  rerender();
+});
+/*
+socket.on('DELETE_READINGS', function (data) {
+  console.log('ON DELETE_READINGS');
+  console.log(data);
+  rstore.dispatch({
+    type:'DELETE_READINGS',
+    id_employee:data.id_employee,
+    socket_id:data.socket_id,
+    t_mid:data.t_mid
+  });
+  rerender();
+});
+*/
 socket.on('GET_CONVERSATIONS', function (data) {
   console.log('ON GET_CONVERSATIONS');
   console.log(data);
@@ -1784,7 +1947,7 @@ socket.on('DELETE_FILES', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'DELETE_FILES',
-    filenames:data.filenames
+    attachment_ids:data.attachment_ids
   });
   rerender();
 });
@@ -1899,12 +2062,59 @@ socket.on('stop typing', function (data) {
 });
 */
 
+function addReading(t_mid){
+  var id_employee = rstore.getState().me.id_employee;
+  var readings = rstore.getState().readings;
+  var reading_new = {id_employee:id_employee,socket_id:socket.id,t_mid:t_mid};
+  /*
+  var index = readings.findIndex((reading)=>{
+    if( reading.id_employee === reading_new.id_employee && 
+        reading.socket_id   === reading_new.socket_id   && 
+        reading.t_mid       === reading_new.t_mid       )
+    {
+      return true;
+    }
+    return false;
+  });
+  console.log('$$$ addReading');
+  console.log('index='+index);
   
-function addSReply(title,message,filename){
+  if(index === -1){
+    socket.emit('ADD_READING',reading_new);
+    rstore.dispatch({
+      type:'ADD_READING',
+      reading:reading_new
+    });
+    rerender();
+  }
+  */
+  socket.emit('ADD_READING',reading_new);
+  rstore.dispatch({
+    type:'ADD_READING',
+    reading:reading_new
+  });
+  rerender();
+
+}
+/*
+function deleteReadings(t_mid){
+  var id_employee = rstore.getState().me.id_employee;
+  var reading = {id_employee:id_employee,t_mid:t_mid};
+  rstore.dispatch({
+    type:'DELETE_READINGS',
+    id_employee:id_employee,
+    socket_id:socket.id,
+    t_mid:t_mid
+  });
+  rerender();
+  socket.emit('DELETE_READINGS',reading);
+}
+*/
+function addSReply(title,message,attachment_id){
   var data = {
     title:title,
     message:message !== '' ? message : '',
-    filename:typeof filename !== 'undefined' && filename !== '' ? filename : undefined
+    attachment_id:typeof attachment_id !== 'undefined' && attachment_id !== '' ? attachment_id : undefined
   }
   socket.emit('ADD_SREPLY',data);
   console.log('EMIT ADD_SREPLY');
@@ -1923,11 +2133,20 @@ function cleanInput(input) {
 }
 
 // Sends a chat message
-function sendMessage(pid,cman_i,t_mid,message,filenames) {  
+function sendMessage(pid,cman_i,t_mid,message,attachment_ids) {  
   var state = rstore.getState();
 
-  if(filenames && filenames.length >=1){
+  if(attachment_ids && attachment_ids.length >=1){
+    var Uploads = state.Uploads;
+    Uploads = Uploads.filter((Upload,i)=>{
+      if(attachment_ids.indexOf(Upload.attachment_id) !== -1){
+        return true;
+      }
+      return false;
+    });
+    var filenames = Uploads.map((Upload)=>(Upload.filename));
     var url = window.location.protocol+'//'+window.location.hostname+BASEDIR+'/msg/media/'+filenames[0];
+
     var attachments = {
       data:[{
         id:null,
@@ -1950,10 +2169,6 @@ function sendMessage(pid,cman_i,t_mid,message,filenames) {
       }]
     };
   }
-  console.log('$$$ FILENAMES');
-  console.log(filenames);
-  console.log('$$$ ATTACHMENTS');
-  console.log(attachments);
 
   rstore.dispatch({
     type:'NEW_MESSAGE',
@@ -1971,13 +2186,13 @@ function sendMessage(pid,cman_i,t_mid,message,filenames) {
   rerender();
 
   if(connected){
-    if (message || (filenames && filenames.length >= 1) ) {
+    if (message || (attachment_ids && attachment_ids.length >= 1) ) {
       var data = {
-        type:(filenames && filenames.length >= 1) ? 'image' : 'text',
+        type:(attachment_ids && attachment_ids.length >= 1) ? 'image' : 'text',
         pid:pid,
         t_mid:t_mid,
         message:(message ? message : undefined),
-        filenames:(filenames ? filenames : undefined)
+        attachment_ids:(attachment_ids ? attachment_ids : undefined)
       };
       socket.emit('NEW_MESSAGE', data);
 
@@ -2094,8 +2309,8 @@ function addFiles(file_infos,file_buffers){
   socket.emit('ADD_FILES',{file_infos:file_infos,file_buffers:file_buffers});
 }
 
-function deleteFiles(filenames){
-  socket.emit('DELETE_FILES',{filenames:filenames});
+function deleteFiles(attachment_ids){
+  socket.emit('DELETE_FILES',{attachment_ids:attachment_ids});
 }
 
 function refreshConversations(cman_i){
@@ -2172,10 +2387,10 @@ function mergeMessages(MessagesOld,MessagesLoaded,is_new=true){
     if(index === -1){
       if(is_new === false){
         Messages.push(Message);
-        console.log('message pushed, length='+Messages.length);
+        //console.log('message pushed, length='+Messages.length);
       }else{
         Messages.unshift(Message);
-        console.log('message unshifted, length='+Messages.length);
+        //console.log('message unshifted, length='+Messages.length);
       }
     }else{
       Messages[index] = Message;
@@ -2191,14 +2406,14 @@ function mergeConversations(ConversationsOld,ConversationsLoaded,is_new=true,exc
     var index = Conversations.findIndex((x,i)=>(x.t_mid === Conversation.t_mid));
     if(index === -1){
       if(is_new === false){
-        console.log('conversation pushed, length='+Conversations.length);
+        //console.log('conversation pushed, length='+Conversations.length);
         Conversations.push(Conversation);
       }else{
-        console.log('conversation unshifted, length='+Conversations.length);
+        //console.log('conversation unshifted, length='+Conversations.length);
         Conversations.unshift(Conversation);
       }
     }else{
-      console.log('conversation replaced, length='+Conversations.length);
+      //console.log('conversation replaced, length='+Conversations.length);
       if(exclude_messages === false){
         Conversations[index] = Conversation;
       }else if(exclude_messages === true){
@@ -2283,7 +2498,11 @@ function filterConversations(Conversations,filter){
   if(filter.id_employee_engage_by){
     console.log(filter.id_employee_engage_by);
     Conversations = Conversations.filter((Conversation,i)=>{
-      if(Conversation.engage_by && (Conversation.engage_by === filter.id_employee_engage_by) && ( moment().diff(moment(Conversation.engage_time),'seconds') <= 3600 ) ){
+      if( Conversation.engage_by 
+          && (Conversation.engage_by === filter.id_employee_engage_by) 
+          && ( moment().diff(moment(Conversation.engage_time),'seconds') <= 3600 ) 
+          && (Conversation.engage_release !== 1) )
+      {
         return true;
       }
       if(Conversation.replied_last_by && (Conversation.replied_last_by === filter.id_employee_engage_by) ){
@@ -2318,6 +2537,7 @@ function getEmployeeFirstname(id_employee){
   return rstore.getState().employee_firstnames[''+id_employee];
 }
 
+
 window.rerender  = rerender;
 window.moment = moment;
 window.rstore = rstore;
@@ -2327,5 +2547,6 @@ socket.emit('GET_UPLOADS',{});
 socket.emit('GET_SREPLIES',{});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
 socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});
+socket.emit('GET_READINGS',{});
 getConversations(0);
 getConversations(1);

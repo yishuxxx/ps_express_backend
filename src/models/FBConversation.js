@@ -97,6 +97,12 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "defaultValue": null,
         "primaryKey": false
       },
+      "engage_release": {
+        "type": "TINYINT(3) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
       "replied_last_by": {
         "type": "INT(10) UNSIGNED",
         "allowNull": true,
@@ -104,6 +110,12 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "primaryKey": false
       },
       "replied_last_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "customer_replied_time": {
         "type": "DATETIME",
         "allowNull": true,
         "defaultValue": null,
