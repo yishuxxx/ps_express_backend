@@ -47,7 +47,7 @@
         padding:5px;
         padding-top:100px;
         border-radius:3px;
-        height:calc(100vh - 18px - 30px - 36px - 30px - 54px - 15px - 2px);
+        height:calc(100vh - 18px - 30px - 36px - 30px - 174px - 15px - 2px);
         overflow-x:hidden;
         overflow-y:auto;
       }
@@ -101,7 +101,8 @@
       }
 
       .FileSelector .upload_image_thumbnail{max-height: 80px;max-width:150px;}
-      
+      .UploadManager .FileSelector{height:450px;overflow-y:auto;}
+
       .SReplyManager .FileSelector{white-space: nowrap;overflow-x:scroll;}
       .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
       .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
@@ -129,6 +130,8 @@
       .SReplyManager .SReplySelector .sreply_image_thumbnail{max-height: 80px;max-width:150px;}
       .SReplyManager .SReplySelector .title{font-weight:bold;}
       .SReplyManager .SReplySelector .text{white-space: normal;}
+
+      .emoji_icon{font-size:28px;cursor:pointer;}
     </style>
   </head>
   <body>
@@ -137,6 +140,6 @@
     <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/latest/js/bootstrap.min.js"></script>
     <script src="<%= base_dir %>/socket.io/socket.io.js"></script>
-    <script src="<%= base_dir %>/javascripts/bundle_msger.js"></script>
+    <script src="<%= base_dir %>/javascripts/bundle_msger2.js"></script>
   </body>
 </html>
