@@ -579,6 +579,10 @@ app.get('/privatereply2',function(req,res){
 	res.render('privatereply2',{});
 });
 
+app.get('/privatereply3',function(req,res){
+	res.render('privatereply3',{});
+});
+
 app.get('/onsen', function (req, res) {
   res.render('onsen', { test: req.test });
 })

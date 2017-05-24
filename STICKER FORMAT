@@ -1,3 +1,40 @@
+//RECEIVE MSG FORMAT
+{
+	sender:{id:"1348512928518254"},
+	recipient:{id:"1769068019987617"},
+	timestamp:1493801724289,
+	message:{
+		mid:"mid.$cAAZI9RpVZSth_sqxgVbzYVpGuPuH",
+		seq:32007,
+		text:"是"
+	}
+}
+//RECEIVE DELIVERY CONFIRMATION FORMAT
+{ sender: { id: '1323687144345912' },
+  recipient: { id: '1769068019987617' },
+  timestamp: 1493728272934,
+  delivery: 
+   { mids: [ 'mid.$cAAYSBk9f8J9h-mno51bySS874HUS' ],
+     watermark: 1493728272615,
+     seq: 0 } }
+
+//CONVERSATION UPDATE EVENT FORMAT
+{
+"entry":
+	[
+		{"changes":[
+			{	"field":"conversations",
+				"value":{
+					"thread_id":"_mid.14833205540:9182a4e489",
+					"page_id":4444444}
+				}
+			],
+		"id":"599188074",
+		"time":1494078657}
+	],
+"object":"page"
+}
+
 // STICKER FORMAT
 {
 	"mid": "mid.$cAAXm2mUxm0hhyl_ZXVbmRqSPAtAf",

@@ -13,6 +13,8 @@
         height:100vh;
         width:calc(100vw - 50px);
         margin:auto;
+        background-color:aliceblue;
+        font-family:"Helvetica Neue",Helvetica,Arial,sans-serif,"Microsoft Yahei";        
       }
       .clear{clear:both;}
 
@@ -20,16 +22,18 @@
       .ConversationListBox div.header{font-weight:bold;}
 
       .ConversationList{
-        height:calc(100vh - 34px - 20px - 30px - 34px - 10px);
+        height:calc(100vh - 22px - 40px - 30px - 30px - 2px);
         border:1px solid #ccc;
         overflow-y: auto;
         overflow-x:hidden;
+        background-color:#fff;
+        display:block;
       }
       .ConversationCard{border-bottom:1px solid #f7f7f7;padding:3px;}
       .ConversationCard:hover{cursor:pointer;background-color:#eee;}      
       .ConversationCard.active{background-color:#eee;}
       .ConversationCard.active:hover{cursor:default;}
-      .ConversationCard.unread{font-weight:bold;}
+      .ConversationCard.unread{font-weight:bold;color:#23aab9;}
 
       .ConversationCard .sender_name{}
       .ConversationCard .updated_time{float:right;}
@@ -47,9 +51,10 @@
         padding:5px;
         padding-top:100px;
         border-radius:3px;
-        height:calc(100vh - 18px - 30px - 36px - 30px - 174px - 15px - 2px);
+        height:calc(100vh - 22px - 30px - 36px - 30px - 174px - 15px - 2px);
         overflow-x:hidden;
         overflow-y:auto;
+        background-color:#fff;
       }
       .MessageManager .message_wrapper.self{text-align:right;}
       .MessageManager .message_wrapper.other{text-align:left;}
@@ -75,7 +80,7 @@
       .MessageManager .send-message.active{cursor:pointer;background-color:#fff;color:#0084ff;}
       .MessageManager .send-message.active:active{color:#eee;}
 
-      .MessageManager .CustomerName{display:inline-block;}
+      .MessageManager .CustomerName{display:inline-block;font-weight:bold;}
 
       .bulk_message_queue_counter{}
 
@@ -132,6 +137,7 @@
       .SReplyManager .SReplySelector .text{white-space: normal;}
 
       .emoji_icon{font-size:28px;cursor:pointer;}
+      .sticker_icon{width:100px;cursor:pointer;}
     </style>
   </head>
   <body>

@@ -38,13 +38,19 @@ module.exports.FBSReplyFunc = function(Sequelize,sequelize){
           "primaryKey": false
         },
         "attachment_id": {
-          "type": "BIGINT(20) UNSIGNED",
+          "type": "VARCHAR(64)",
           "allowNull": true,
           "defaultValue": null,
           "primaryKey": false
         },
         "id_employee": {
           "type": "INT(10) UNSIGNED",
+          "allowNull": false,
+          "defaultValue": null,
+          "primaryKey": false
+        },
+        "pid": {
+          "type": "BIGINT(20) UNSIGNED",
           "allowNull": false,
           "defaultValue": null,
           "primaryKey": false

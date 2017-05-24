@@ -11,20 +11,31 @@ import ReactDatetime from 'react-datetime';
 import ReactSelect from 'react-select';
 import {randomString} from './Utils/Helper';
 
+//var console = {};
+//console.log = function(){};
+
 const BASEDIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
 const initial_state = Immutable({
   connection:'',
   freeze:false,
   reqs_loading:[],
-  Uploads:[],
-  SReplies:[],
   Pages:[
-    {pid:1769068019987617,name:'SY Online Venture',Conversations:[]},
-    {pid:1661200044095778,name:'SY代购',Conversations:[]}
+    { pid:1769068019987617,
+      name:'SY Online Venture',
+      Conversations:[],
+      Uploads:[],
+      SReplies:[]
+    },
+    { pid:1661200044095778,
+      name:'SY代购',
+      Conversations:[],
+      Uploads:[],
+      SReplies:[]
+    }
   ],
   ConvManagers:[{
     pid     : 1769068019987617,
-    Conversations:{data:[]},
+    Conversations:{data:[]},    
     filter:{
       inbox:'INBOX',
       label_ids    : [],
@@ -43,7 +54,9 @@ const initial_state = Immutable({
       name:'',
       message:'',
       message_t_mids:[],
-    }
+    },
+    Uploads:[],
+    SReplies:[]
   }],
 });
 
@@ -84,6 +97,10 @@ var reducer = function(state=Immutable([]),action=null){
       });
       state = Immutable.setIn(state, ["employee_firstnames"], employee_firstnames);
       state = Immutable.setIn(state, ["Employees"], action.Employees);
+      break;
+
+    case 'GET_TAGS':
+      state = Immutable.setIn(state, ['Tags'], action.Tags);
       break;
 
     case 'GET_LABELS':
@@ -311,41 +328,55 @@ var reducer = function(state=Immutable([]),action=null){
       break;
 
     case 'ADD_FILES':
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
+      console.log('$$$ ADD_FILES');
+      console.log(action);
+      console.log(page_i);
       var UploadsLoaded = action.Uploads;
-      var Uploads = Immutable.asMutable(state.Uploads);
+      var Uploads = Immutable.asMutable(state.Pages[page_i].Uploads);
 
       Uploads = mergeUploads(Uploads,UploadsLoaded);
-      state = Immutable.setIn(state, ["Uploads"], Uploads);
+      state = Immutable.setIn(state, ['Pages',page_i,'Uploads'], Uploads);
       break;
 
     case 'DELETE_FILES':
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
       var attachment_ids = action.attachment_ids;
-      var Uploads = Immutable.asMutable(state.Uploads);
+      var Uploads = Immutable.asMutable(state.Pages[page_i].Uploads);
+
       Uploads = Uploads.filter((Upload,i)=>{
         return attachment_ids.indexOf(Upload.attachment_id) === -1;
       });
-      state = Immutable.setIn(state, ["Uploads"], Uploads);
+      state = Immutable.setIn(state, ['Pages',page_i,'Uploads'], Uploads);
       break;
 
     case 'GET_SREPLIES':
-      state = Immutable.setIn(state, ["SReplies"], action.SReplies);
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
+      state = Immutable.setIn(state, ['Pages',page_i,'SReplies'], action.SReplies);
       break;
 
     case 'ADD_SREPLY':
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
       var SReplyLoaded = action.SReply;
-      var SReplies = Immutable.asMutable(state.SReplies);
+      var SReplies = Immutable.asMutable(state.Pages[page_i].SReplies);
 
       SReplies.push(SReplyLoaded);
-      state = Immutable.setIn(state, ["SReplies"], SReplies);
+      state = Immutable.setIn(state, ['Pages',page_i,'SReplies'], SReplies);
       break;
 
     case 'DELETE_SREPLIES':
+      var pid = action.pid;
+      var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
       var sreply_ids = action.sreply_ids;
-      var SReplies = Immutable.asMutable(state.SReplies);
+      var SReplies = Immutable.asMutable(state.Pages[page_i].SReplies);
       SReplies = SReplies.filter((SReply,i)=>{
         return sreply_ids.indexOf(SReply.sreply_id) === -1;
       });
-      state = Immutable.setIn(state, ["SReplies"], SReplies);
+      state = Immutable.setIn(state, ['Pages',page_i,'SReplies'], SReplies);
       break;
 
     default:
@@ -359,10 +390,14 @@ class MessageManager extends Component{
   constructor(props,context) {
     super(props,context);
     //this.state = {has_message:false};
-    this.state = {auto_scroll_locked:false};
+    this.state = {auto_scroll_locked:false,Stickers:this.filterUploads(props.Uploads,'STICKER')};
     this.emojis = [
       '😄','😅','😇','😊','😱','😝','😣','😭','👌','👍','🙏'
     ];
+  }
+
+  componentWillReceiveProps(nextProps) {
+    this.setState({Stickers:this.filterUploads(nextProps.Uploads,'STICKER')});
   }
 
   componentDidMount() {
@@ -388,7 +423,7 @@ class MessageManager extends Component{
   */
   handleConversationMessageSubmit = (event) => {
     var t_mid = this.props.t_mid;
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var cman_i = this.props.cman_i;
     var message = this.message_create.value;
 
@@ -409,7 +444,7 @@ class MessageManager extends Component{
     console.log(event.key);
     if(event.key === 'Enter' && !event.shiftKey){
       var t_mid = this.props.t_mid;
-      var pid = this.props.page_id;
+      var pid = this.props.pid;
       var cman_i = this.props.cman_i;
       var message = this.message_create.value;
 
@@ -420,20 +455,20 @@ class MessageManager extends Component{
   }
 
   handleSendReadReceipt = (event) =>{
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     sendReadReceipt(pid,t_mid);
   }
 
   handleEngageConversation = (event) =>{
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     engageConversation(pid,t_mid);
   }
 
   handleGetMessages = (event) => {
     var Messages = this.props.messages ? this.props.messages.data : null;
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     var before = Messages ? Messages[Messages.length-1].created_time : this.props.ConversationC.updated_time;
     var max_rows = 100;
@@ -443,7 +478,7 @@ class MessageManager extends Component{
 
   handleGetMessagesForceRefresh = (event) => {
     var Messages = this.props.messages ? this.props.messages.data : null;
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     var before = Messages ? Messages[Messages.length-1].created_time : this.props.ConversationC.updated_time;
     var max_rows = 100;
@@ -452,7 +487,7 @@ class MessageManager extends Component{
   }
 
   handleUpdateConversationLabels = (all_selected_options) => {
-    var pid = this.props.page_id;
+    var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     updateConversationLabels(pid,t_mid,all_selected_options);
   }
@@ -468,20 +503,44 @@ class MessageManager extends Component{
     this.messageList.scrollTop = maxScrollTop > 0 ? maxScrollTop : 0;
   }
 
-  handleSelectEmoji(event) {
+  handleSelectEmoji = (event) => {
     this.message_create.value = this.message_create.value + event.target.innerHTML;
+  }
+
+  handleSendSticker = (event) =>{
+      var pid = this.props.pid;
+      var t_mid = this.props.t_mid;
+      var cman_i = this.props.cman_i;
+      var attachment_id = event.target.attributes.getNamedItem('data-attachment-id').value;
+
+      sendMessage(pid,cman_i,t_mid,null,[attachment_id]);
+  }
+
+  filterUploads(Uploads,tag_name){
+    return Uploads.filter((x)=>{
+      if(x.FBXTags && x.FBXTags.length >=1){
+        return x.FBXTags[0].name === tag_name
+      }
+      return false;
+    });
   }
 
   render(){
     var Messages = this.props.messages ? this.props.messages.data : [];
-    var page_id = this.props.page_id;
+    var pid = this.props.pid;
     //var message_create = this.state.message_create;
     var message_count = this.props.message_count;
     var FBLabels = this.props.FBLabels;
     var EmojiSelector = 
-    <Popover id="popover-positioned-top">
+    <Popover id="popover-trigger-click-root-close">
       {this.emojis.map((emoji,i)=>(
         <span key={'emoji'+i} className="emoji_icon" onClick={this.handleSelectEmoji.bind(this)}>{emoji}</span>
+      ))}
+    </Popover>;
+    var StickerSelector = 
+    <Popover id="popover-trigger-click-root-close">
+      {this.state.Stickers.map((Sticker,i)=>(
+        <img key={'sticker'+i} className="sticker_icon" src={BASEDIR+'/msg/media/'+Sticker.filename} data-attachment-id={Sticker.attachment_id} onClick={this.handleSendSticker}/>
       ))}
     </Popover>;
 
@@ -494,7 +553,7 @@ class MessageManager extends Component{
               <button className="btn btn-sm btn-default" onClick={this.handleGetMessagesForceRefresh}><span className="glyphicon glyphicon-refresh"></span></button>
               <button className={"btn btn-sm"+(this.state.auto_scroll_locked ? ' btn-warning' : ' btn-default')} onClick={this.handleScrollLock}><span className="glyphicon glyphicon-lock"></span></button>
             </div>
-            <span className="CustomerName">{this.props.ConversationC.name}</span>
+            <span className="CustomerName pull-right">{this.props.ConversationC.name}</span>
           </div>
           {this.props.ConversationC.FBLabels ?
             <div className="LabelSelector">
@@ -512,8 +571,8 @@ class MessageManager extends Component{
         <section className="messages_list" ref={(div) => {this.messageList = div;}}>
           {Messages.map((x,index)=>{
             var Message = Messages[Messages.length - 1 - index];
-            var message_from = (Message.from.id == page_id) ? " self" : " other";
-            var message_left_right = (Message.from.id == page_id) ? "top" : "left";
+            var message_from = (Message.from.id == pid) ? " self" : " other";
+            var message_left_right = (Message.from.id == pid) ? "top" : "left";
 
             var message_or_attachment = [];
             var attachments = Message.attachments;
@@ -554,7 +613,7 @@ class MessageManager extends Component{
                 // FILE OR AUDIO
                 }else if(attachment.file_url){
                   // AUDIO RECORDING
-                  if(attachment.mime_type === 'audio/mpeg'){
+                  if(attachment.mime_type === 'audio/mpeg' || attachment.mime_type === 'audio/aac'){
                     message_or_attachment.push(
                       <audio  controls 
                               key={attachment.id}
@@ -612,7 +671,7 @@ class MessageManager extends Component{
           <button className="btn btn-sm btn-default" onClick={this.handleSendReadReceipt}><span className="glyphicon glyphicon-sunglasses"></span></button>
           <button className="btn btn-sm btn-default" onClick={this.handleEngageConversation}>{"Engage"}</button>
           <SReplyManager 
-            pid={this.props.page_id}
+            pid={this.props.pid}
             t_mid={this.props.t_mid}
             cman_i={this.props.cman_i}
             Uploads={this.props.Uploads}
@@ -620,16 +679,20 @@ class MessageManager extends Component{
             psid={this.props.ConversationC ? this.props.ConversationC.psid : undefined}
           />
           <UploadManager 
-            pid={this.props.page_id}
+            pid={this.props.pid}
             t_mid={this.props.t_mid}
             cman_i={this.props.cman_i} 
             Uploads={this.props.Uploads}
             psid={this.props.ConversationC ? this.props.ConversationC.psid : undefined}
+            Tags={this.props.Tags}
           />
-          <OverlayTrigger trigger="click" placement="top" overlay={EmojiSelector}>
+          <OverlayTrigger trigger="click" rootClose placement="top" overlay={EmojiSelector}>
             <button className="btn btn-sm btn-default">😛</button>
           </OverlayTrigger>
-
+          <OverlayTrigger trigger="click" rootClose placement="top" overlay={StickerSelector}>
+            <button className="btn btn-sm btn-default" disabled={this.props.ConversationC && this.props.ConversationC.psid ? false : true}>Stick</button>
+          </OverlayTrigger>
+          <button className={"pull-right btn btn-sm"+(this.state.auto_scroll_locked ? ' btn-warning' : ' btn-default')} onClick={this.handleScrollLock}><span className="glyphicon glyphicon-lock"></span></button>          
         </section>
 
         <div className="form-group">
@@ -820,7 +883,7 @@ class ConvLoadFilter extends Component{
         </div>
 
         <div className="input-group">
-          <span className="input-group-addon input-group-sm">Engage :</span>
+          <span className="input-group-addon input-group-sm">Replied :</span>
           <ReactSelect 
             value={id_employee_engage_by}
             options={
@@ -875,12 +938,11 @@ class ConvLoadFilter extends Component{
           </span>
           <input type="text" className="form-control input-sm" style={{width:'50px'}} defaultValue={1} ref={(input)=>{this.TextInputMore = input}} />
           <span className="input-group-btn">
+            <button className="btn btn-sm btn-default" onClick={this.handleRefreshConversations}>R</button>
             <button className="btn btn-sm btn-default" type="button" onClick={this.handleSyncLabels}>L</button>
             <button className="btn btn-sm btn-default" type="button" onClick={this.handleSyncConversations}>C</button>
           </span>
         </div>
-
-        {/*<button className="btn btn-sm btn-default" onClick={this.handleRefreshConversations}>R</button>*/}
 
 
       </section>
@@ -948,7 +1010,7 @@ class Modal extends Component{
 class UploadManager extends Component{
   constructor(props) {
     super(props);
-    this.state = {highlights:[],search_text:'',Uploads:props.Uploads};
+    this.state = {highlights:[],search_text:'',Uploads:props.Uploads,selected_tag_ids:[]};
   }
 
   componentWillReceiveProps(nextProps) {
@@ -973,15 +1035,17 @@ class UploadManager extends Component{
     return Uploads;
   }
 
-
   handleAddFiles = (event) =>{
+    var pid = this.props.pid;
     var cman_i = this.props.cman_i;
     var files = event.target.files;
     //var image_upload_preview = this.image_upload_preview;
     var file_buffers = [];
     var file_infos = [];
     var name = this.upload_name_create.value;
+    var tag_ids = this.state.selected_tag_ids;
     this.upload_name_create.value = '';
+    this.setState({selected_tag_ids:[]});
 
     if(files && files.length >=1){
 
@@ -989,6 +1053,7 @@ class UploadManager extends Component{
         file_infos.push({
           filename_ori:files[i].name,
           name:name,
+          tag_ids:tag_ids,
           type:files[i].type,
           size:files[i].size,
           lastModified:files[i].lastModified
@@ -1008,7 +1073,7 @@ class UploadManager extends Component{
           reader.onload = function (e){
             file_buffers.push(e.target.result);
             if(files.length === file_buffers.length){
-              addFiles(file_infos,file_buffers);
+              addFiles(pid,file_infos,file_buffers);
             }
           }
           //reader2.readAsDataURL(file);
@@ -1046,12 +1111,21 @@ class UploadManager extends Component{
     //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
     //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
     sendMessage(pid,cman_i,t_mid,null,attachment_ids);
+    this.setState({highlights:[],search_text:''});    
   }
 
   handleDelete = (event) =>{
     console.log('HANDLE DELETE');
+    var pid = this.props.pid;
     var attachment_ids = this.state.highlights;
-    deleteFiles(attachment_ids);
+    deleteFiles(pid,attachment_ids);
+  }
+
+  handleUpdateTags = (all_selected_options) =>{
+    console.log(all_selected_options);
+    var selected_tag_ids = all_selected_options.map((option)=>(option.value));
+    console.log(selected_tag_ids);
+    this.setState({selected_tag_ids:selected_tag_ids});
   }
 
   render(){
@@ -1104,6 +1178,12 @@ class UploadManager extends Component{
                 <input type="text" className="form-control" placeholder="name" ref={(node)=>{this.upload_name_create = node}}/>
               </div>
 
+              <ReactSelect 
+                value={this.state.selected_tag_ids.join(',')}
+                options={this.props.Tags ? this.props.Tags.map((Tag,i)=>({value:Tag.tag_id+'',label:Tag.name})) : []}
+                onChange={this.handleUpdateTags}
+                multi={true}
+              />
               <input className="form-control" type="file" onChange={this.handleAddFiles} />
             </section>
           </Col>
@@ -1173,12 +1253,13 @@ class SReplyManager extends Component{
   }
 
   handleAdd = (event) =>{
+    var pid = this.props.pid;
     var title = this.sreply_title_create.value;
     var message = this.sreply_message_create.value;
     if(message !== '' && title !== ''){
       var attachment_id = this.state.image_selected;
 
-      addSReply(title,message,attachment_id);
+      addSReply(pid,title,message,attachment_id);
       this.sreply_title_create.value = '';
       this.sreply_message_create.value = '';
       this.setState({image_selected:''});
@@ -1213,12 +1294,15 @@ class SReplyManager extends Component{
       sendMessage(pid,cman_i,t_mid,null,[attachment_id]);
     }
     sendMessage(pid,cman_i,t_mid,message);
+    this.setState({search_text:''});
   }
 
   handleDelete = (event) =>{
-    var sreply_id = this.state.sreply_id_selected;
-    if(sreply_id){
-      deleteSReplies([sreply_id]);
+    var pid = this.props.pid;
+    var sreply_ids = [this.state.sreply_id_selected];
+    console.log(sreply_ids);
+    if(sreply_ids && sreply_ids.length>=1){
+      deleteSReplies(pid,sreply_ids);
     }
   }
 
@@ -1255,7 +1339,7 @@ class SReplyManager extends Component{
     
     return(
       <span className="SReplyManager">
-        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#sreply_cman_modal'+cman_i} disabled={psid ? false : true}><span className="glyphicon glyphicon-flash" aria-hidden="true"></span> SavedReply</button>
+        <button className="btn btn-default btn-sm" data-toggle="modal" data-target={'#sreply_cman_modal'+cman_i} ><span className="glyphicon glyphicon-flash" aria-hidden="true"></span> SavedReply</button>
         <Modal
           title={'Saved Replies'}
           modal_id={'sreply_cman_modal'+cman_i}
@@ -1264,7 +1348,7 @@ class SReplyManager extends Component{
 
           <div className="form-group">
             <label>Search</label>
-            <input type="text" className="form-control" onChange={this.handleSearch}/>
+            <input type="text" className="form-control" onChange={this.handleSearch} value={this.state.search_text}/>
           </div>
 
           <section className="SReplySelector">
@@ -1284,11 +1368,8 @@ class SReplyManager extends Component{
             <div className="clear"></div>
           </section>
           <button className="btn btn-warning" onClick={this.handleDelete}>DELETE</button>
-
           <button className="btn btn-primary pull-right" onClick={this.handleSend} data-dismiss="modal">SEND</button>
-
           <button className={'btn btn-default'+(this.state.select_to_send ? ' active' : '')} onClick={this.handleToggleSelectToSend}>SELECT TO SEND</button>
-
           <hr />
 
           <Row>
@@ -1371,9 +1452,6 @@ class ConversationCard extends Component{
     this.props.setConversationSelected(t_mid);
     getMessages(pid,t_mid,true);
     addReading(t_mid);
-    if(this.props.ConversationC){
-      deleteReadings(this.props.ConversationC.t_mid);
-    }
   }
 
   render(){
@@ -1390,12 +1468,16 @@ class ConversationCard extends Component{
       }
       */
     }
-    var readings_c = this.props.readings.filter((reading)=>(reading.t_mid === this.props.Conversation.t_mid));
+    if(this.props.readings && this.props.readings.length>=1){
+      var readings_c = this.props.readings.filter((reading)=>(reading.t_mid === this.props.Conversation.t_mid));
+    }else{
+      var readings_c = [];
+    }
 
     return(
       <section 
         className={ "ConversationCard"
-                    +(this.props.Conversation.unread_count ? ' unread' : '')
+                    +(this.props.Conversation.customer_replied === 1 && this.props.Conversation.unread_count > 0/*(this.props.Conversation.unread_count > 0 && !this.props.Conversation.messages) || (this.props.Conversation.unread_count > 0 && this.props.Conversation.messages && this.props.Conversation.messages.data.length>=1 && (this.props.Conversation.messages.data[0].uid_from !== this.props.pid))*/ ? ' unread' : '')
                     +(this.props.Conversation.queued_message ? ' alert-warning' : '')
                     +(this.props.Conversation.sent_message ? ' alert-success' : '')
                     +(this.props.ConversationC && this.props.Conversation.t_mid === this.props.ConversationC.t_mid ? ' active' : '')
@@ -1416,7 +1498,7 @@ class ConversationCard extends Component{
                         : null
                       )
                   */}
-                  {this.props.Conversation.psid ? '🈶 ' : null}
+                  {this.props.Conversation.psid ? '💧 ' : null}
                   {this.props.Conversation.name ? this.props.Conversation.name : this.props.Conversation.participants.data[0].name}
                 </span>
               </span>
@@ -1436,7 +1518,6 @@ class ConversationCard extends Component{
                   ))
                 : null
               }
-
               
               {    (this.props.Conversation.engage_by)
                 && (moment().diff(moment(this.props.Conversation.engage_time),'seconds') <= 3600)
@@ -1447,7 +1528,7 @@ class ConversationCard extends Component{
 
               
               {this.props.Conversation.replied_last_by
-                ? <span className="label label-info last_replied_box">{getEmployeeFirstname(this.props.Conversation.replied_last_by)}</span>
+                ? <span className={'label last_replied_box'+(this.props.me.id_employee === this.props.Conversation.replied_last_by ? ' label-primary' : ' label-info')} >{getEmployeeFirstname(this.props.Conversation.replied_last_by)}</span>
                 : null
               }
             </div>
@@ -1626,6 +1707,7 @@ class ConversationManager extends Component{
                                 i={index}
                                 setConversationSelected={this.setConversationSelected}
                                 readings={this.props.readings}
+                                me={this.props.me}
                               />
                     }else{
                       return null;
@@ -1652,14 +1734,15 @@ class ConversationManager extends Component{
               ConversationC
               ? <MessageManager 
                   messages={ConversationC.messages}
-                  page_id={this.props.ConvManager.pid}
+                  pid={this.props.ConvManager.pid}
                   cman_i={this.props.cman_i}
                   t_mid={this.state.t_mid_selected}
                   message_count={ConversationC.message_count}
                   FBLabels={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].FBLabels}
                   ConversationC={ConversationC}
-                  Uploads={this.props.Uploads}
-                  SReplies={this.props.SReplies}
+                  Uploads={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].Uploads}
+                  SReplies={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].SReplies}
+                  Tags={this.props.Tags}
                 />
               : null
             }
@@ -1696,17 +1779,19 @@ class MessengerApp extends Component{
             : (this.props.state.connection_status === 'RECONNECT_ERROR' ? 'RECONNECTING FAILED' : '')}
         </div>
 
-        {this.props.state.me 
-          ? <span>{'You are login as : '+this.props.state.me.firstname}</span>
-          : null
-        }
-      
-        <a href={BASEDIR+'/logout?redirect='+BASEDIR+'/msg/msger'}> (Logout) </a>
+        <section className="TopBar">
+          {this.props.state.me 
+            ? <span>{'You are login as : '+this.props.state.me.firstname}</span>
+            : null
+          }
+        
+          <a href={BASEDIR+'/logout?redirect='+BASEDIR+'/msg/msger'}> (Logout) </a>
 
-        <span className="btn btn-xs btn-default" onClick={this.handleDeleteEngages}>Clear My Engages</span>
-        <span className={"btn btn-xs btn-default"+(this.props.state.freeze ? ' active' : '')} onClick={this.handleToggleFreeze}>{this.props.state.freeze ? 'Frozen' : 'Freeze'}</span>
+          <span className="btn btn-xs btn-default" onClick={this.handleDeleteEngages}>Clear My Engages</span>
+          <span className={"btn btn-xs btn-default"+(this.props.state.freeze ? ' active' : '')} onClick={this.handleToggleFreeze}>{this.props.state.freeze ? 'Frozen' : 'Freeze'}</span>
 
-        <span>{this.props.state.reqs_loading && this.props.state.reqs_loading.length>=1 ? this.props.state.reqs_loading.length+' Reqs Loading...' : ''}</span>
+          <span>{this.props.state.reqs_loading && this.props.state.reqs_loading.length>=1 ? this.props.state.reqs_loading.length+' Reqs Loading...' : ''}</span>
+        </section>
 
         <Row>
           <Col md={6}>
@@ -1720,6 +1805,8 @@ class MessengerApp extends Component{
                   Uploads={this.props.state.Uploads}
                   SReplies={this.props.state.SReplies}
                   readings={this.props.state.readings}
+                  Tags={this.props.state.Tags}
+                  me={this.props.state.me}
                 />
               : null
             }
@@ -1735,6 +1822,8 @@ class MessengerApp extends Component{
                   Uploads={this.props.state.Uploads}
                   SReplies={this.props.state.SReplies}
                   readings={this.props.state.readings}
+                  Tags={this.props.Tags}
+                  me={this.props.state.me}
                 />
               : null
             }
@@ -1793,6 +1882,16 @@ socket.on('GET_EMPLOYEES', function (data) {
   rstore.dispatch({
     type:'GET_EMPLOYEES',
     Employees:data.Employees,
+  });
+  rerender();
+});
+
+socket.on('GET_TAGS', function (data) {
+  console.log('ON GET_TAGS');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_TAGS',
+    Tags:data.FBXTags,
   });
   rerender();
 });
@@ -1927,6 +2026,7 @@ socket.on('GET_SREPLIES', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'GET_SREPLIES',
+    pid:data.pid,
     SReplies:data.FBSReplies
   });
   rerender();
@@ -1937,6 +2037,7 @@ socket.on('ADD_FILES', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'ADD_FILES',
+    pid:data.pid,
     Uploads:data.FBUploads
   });
   rerender();
@@ -1947,6 +2048,7 @@ socket.on('DELETE_FILES', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'DELETE_FILES',
+    pid:data.pid,
     attachment_ids:data.attachment_ids
   });
   rerender();
@@ -1957,6 +2059,7 @@ socket.on('ADD_SREPLY', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'ADD_SREPLY',
+    pid:data.pid,
     SReply:data.FBSReply
   });
   rerender();
@@ -1967,6 +2070,7 @@ socket.on('DELETE_SREPLIES', function (data) {
   console.log(data);
   rstore.dispatch({
     type:'DELETE_SREPLIES',
+    pid:data.pid,
     sreply_ids:data.sreply_ids
   });
   rerender();
@@ -2110,8 +2214,9 @@ function deleteReadings(t_mid){
   socket.emit('DELETE_READINGS',reading);
 }
 */
-function addSReply(title,message,attachment_id){
+function addSReply(pid,title,message,attachment_id){
   var data = {
+    pid:pid,
     title:title,
     message:message !== '' ? message : '',
     attachment_id:typeof attachment_id !== 'undefined' && attachment_id !== '' ? attachment_id : undefined
@@ -2121,8 +2226,8 @@ function addSReply(title,message,attachment_id){
   console.log(data);
 }
 
-function deleteSReplies(sreply_ids){
-  var data = {sreply_ids:sreply_ids};
+function deleteSReplies(pid,sreply_ids){
+  var data = {pid:pid,sreply_ids:sreply_ids};
   socket.emit('DELETE_SREPLIES',data);
   console.log('EMIT DELETE_SREPLIES');
   console.log(data);
@@ -2134,10 +2239,12 @@ function cleanInput(input) {
 
 // Sends a chat message
 function sendMessage(pid,cman_i,t_mid,message,attachment_ids) {  
-  var state = rstore.getState();
+  var state = rstore.getState();  
 
   if(attachment_ids && attachment_ids.length >=1){
-    var Uploads = state.Uploads;
+    var page_i = state.Pages.findIndex((x)=>(x.pid === pid));
+    var Uploads = state.Pages[page_i].Uploads;
+
     Uploads = Uploads.filter((Upload,i)=>{
       if(attachment_ids.indexOf(Upload.attachment_id) !== -1){
         return true;
@@ -2303,14 +2410,14 @@ function getMessages(pid,t_mid,latest_only) {
   }
 }
 
-function addFiles(file_infos,file_buffers){
+function addFiles(pid,file_infos,file_buffers){
   //window.files = files;
   //window.file_buffers = file_buffers;
-  socket.emit('ADD_FILES',{file_infos:file_infos,file_buffers:file_buffers});
+  socket.emit('ADD_FILES',{pid:pid,file_infos:file_infos,file_buffers:file_buffers});
 }
 
-function deleteFiles(attachment_ids){
-  socket.emit('DELETE_FILES',{attachment_ids:attachment_ids});
+function deleteFiles(pid,attachment_ids){
+  socket.emit('DELETE_FILES',{pid:pid,attachment_ids:attachment_ids});
 }
 
 function refreshConversations(cman_i){
@@ -2320,7 +2427,7 @@ function refreshConversations(cman_i){
   if(connected){
     var data = {pid:pid};
     socket.emit('REFRESH_CONVERSATIONS',data);
-    console.log('EMIT');
+    console.log('EMIT REFRESH_CONVERSATIONS');
     console.log(data);
   }
 }
@@ -2457,7 +2564,8 @@ function dateCompareMessage(a, b){
 function filterConversations(Conversations,filter){
   if(filter.inbox && filter.inbox === 'UNREAD'){
     Conversations = Conversations.filter((Conversation,i)=>{
-      if(Conversation.unread_count > 0){
+      //if( (Conversation.unread_count > 0 && !Conversation.messages) || (Conversation.unread_count > 0 && Conversation.messages && Conversation.messages.data.length>=1 && (Conversation.messages.data[0].uid_from !== Conversation.pid)) ){
+      if(Conversation.customer_replied === 1 && Conversation.unread_count > 0){
         return true;
       }
       return false;
@@ -2494,7 +2602,7 @@ function filterConversations(Conversations,filter){
     });
   }
   */
-
+  console.log(filter);
   if(filter.id_employee_engage_by){
     console.log(filter.id_employee_engage_by);
     Conversations = Conversations.filter((Conversation,i)=>{
@@ -2542,11 +2650,16 @@ window.rerender  = rerender;
 window.moment = moment;
 window.rstore = rstore;
 window.Immutable = Immutable;
-socket.emit('GET_EMPLOYEES',{});
-socket.emit('GET_UPLOADS',{});
-socket.emit('GET_SREPLIES',{});
-socket.emit('GET_LABELS', {pid:rstore.getState().Pages[0].pid});
-socket.emit('GET_LABELS', {pid:rstore.getState().Pages[1].pid});
-socket.emit('GET_READINGS',{});
-getConversations(0);
-getConversations(1);
+(()=>{
+  socket.emit('GET_EMPLOYEES',{});
+  socket.emit('GET_READINGS',{});
+  socket.emit('GET_TAGS',{});
+
+  var pids = rstore.getState().Pages.map((Page)=>(Page.pid));
+  pids.map((pid,i)=>{
+    getConversations(i);
+    socket.emit('GET_LABELS', {pid:pid});
+    socket.emit('GET_UPLOADS',{pid:pid});
+    socket.emit('GET_SREPLIES',{pid:pid});
+  });
+})()

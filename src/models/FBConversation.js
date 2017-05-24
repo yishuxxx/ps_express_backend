@@ -120,6 +120,12 @@ module.exports.FBConversationFunc = function(Sequelize,sequelize){
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
+      },
+      "customer_replied": {
+        "type": "TINYINT(3) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
       }
     },{
         tableName:'fb_conversation',
