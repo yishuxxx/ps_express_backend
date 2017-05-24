@@ -5,6 +5,8 @@ import { createStore } from 'redux';
 import { Grid, Row, Col, Button, FormControl } from 'react-bootstrap';
 import moment from 'moment';
 import { syDateFormat } from './Utils/Helper';
+import qs from 'qs';
+import Promise from 'bluebird';
 
 const greyborder = {backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px"};
 const blueborder = {backgroundColor:'aliceblue',margin:"3px 0px 3px 50px",border:"1px solid darkturquoise",padding:"5px 10px 5px 10px",borderRadius:"3px"};
@@ -14,13 +16,13 @@ const greenborderbottom = {
     borderStyle: 'solid none none none',
     backgroundColor: '#fefefe'
 };
-const bluefont = {color:'blue',fontWeight:'bold',cursor:'pointer'};
 const boldfont = {fontWeight:'bold'};
 
 const message_from_self = {textAlign:'right'};
 const message_from_other = {textAlign:'left'};
 
-const facebook_base_url = settings.fb.base_url;
+const FACEBOOK_URL = settings.fb.base_url;
+const GRAPH_API_URL = settings.fb.graph_api_url;
 
 window.fbAsyncInit = function() {
   FB.init({
@@ -103,7 +105,7 @@ var reducer = function(state={},action=null){
 
     case 'PAGE_LABELS_CREATE_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Labels = action.response;
-      break;      
+      break;
 
     case 'LABEL_SELECT':
       if(action.chosen_label_index !== -1){
@@ -551,74 +553,6 @@ sy.checkLoginStatus = function(){
   });
 }
 
-sy.message = function(){
-  FB.api(
-    '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+rstore.getState().Pages.data[0].access_token+'&fields=message,created_time,from,to,attachments',
-    function(response){
-      console.log(response);
-  });
-}
-
-/*
-sy.message = function(){
-  FB.api(
-    '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+sy.pageAuthResponse.data[0].access_token+'&fields=message,created_time,from,to',
-    function(response){
-      console.log(response);
-
-      //t_mid.1442286828612:0a18275c12a2dfe520/messages?fields=message,created_time,from,to
-  });
-}
-
-sy.sendMessagePageAPI = function(){
-  var messageData = {
-
-      body:"asd",
-      attachment: "https://unity3d.com/profiles/unity3d/themes/unity/images/company/brand/logos/primary/unity-logo.png"
-    //source: "https://facebookbrand.com/wp-content/themes/fb-branding/prj-fb-branding/assets/images/fb-art.png" 
-
-  };
-
-  FB.api(
-    '/t_mid.1442286828612:0a18275c12a2dfe520/messages?access_token='+rstore.getState().Pages.data[0].access_token,
-    'POST',
-    messageData,
-    function(response){
-      console.log(response);
-  });
-}
-
-sy.sendMessage = function(){
-
-  var messageData = {
-    recipient: {
-      id: "1557195390962350"//yishu-599188074-10153270822113075//shiyuh-10155357680739396
-    },
-    message: {
-      attachment: {
-        type: "image",
-        payload: {
-          url: "https://facebookbrand.com/wp-content/themes/fb-branding/prj-fb-branding/assets/images/fb-art.png"
-        }
-      }
-    }
-  };
-
-  sy.callSendAPI(messageData);
-}
-
-sy.callSendAPI = function (messageData) {
-  fetch('https://graph.facebook.com/v2.6/me/messages?access_token='+sy.page_access_token_messenger,{
-    method: 'POST',
-    headers:{'Content-Type': 'application/json'},
-    body: JSON.stringify(messageData)
-  }).then(function (res) {
-    res.json();
-  }).then(function(response){
-    console.log(response);
-  });
-}
-*/
 sy.parseAutoRefreshList = function(str){
   var state = rstore.getState();
   var page_posts = str.split("\n");
@@ -694,7 +628,6 @@ sy.queueAutoRefresh = function(){
     }
     rerender();
   }
-  
 }
 
 sy.hideComments = function(state,page_index,post_index,hide_comments){
@@ -781,12 +714,6 @@ class AutoReplyApp extends Component{
               <PageManager key={Page.id} index={index} Page={Page}/>
             )))
           : null}
-
-          <CommentHistory 
-            CommentCounts={this.props.state.CommentCounts}
-            auto_refresh_list={this.props.state.auto_refresh_list}
-            Pages={this.props.state.Pages}
-          />
         </Col>
         </Row>
       </section>
@@ -794,85 +721,10 @@ class AutoReplyApp extends Component{
   }
 }
 
-class CommentHistory extends Component{
-
-  constructor(props,context) {
-    super(props,context);
-    this.state = {post_id:''};
-  }
-
-  handleGetCommentCount = (event) => {
-    var post_id = this.state.post_id;
-    var page_id = post_id.split('_')[0];
-    fetch(settings.base_dir+'/msg/countcomments?post_id='+post_id+'&page_id='+page_id,{
-      method: "GET",
-      headers: {"Content-Type": "application/x-www-form-urlencoded"}
-    }).then(function (res) {
-      return res.json();
-    }).then(function(response){
-      rstore.dispatch({
-        type:'GET_COMMENT_COUNTS_RESPONSE_SUCCESS',
-        CommentCounts:response
-      });
-      rerender();
-    });
-  }
-
-  handlePostIdChange = (event) => {
-    this.setState({post_id:event.target.value});
-  }
-
-  render(){
-    return(
-      <section id="comment_counter">
-        <Row>
-          <Col md={4}>
-            <input className="form-control" type="text" name="post_id" onChange={this.handlePostIdChange}/>
-          
-            {this.props.auto_refresh_list ?
-            <div>
-              {this.props.auto_refresh_list.map((row,index)=>{
-                var Post = this.props.Pages.data[row[0]].Posts.data[row[1]];
-                return (
-                  <div key={'post_id_'+index}>
-                    <a style={{fontSize:'10px'}}>
-                        {'#'  +(row[0]+1)+'-'+(row[1]+1)+
-                         '] ' +Post.id}
-                    </a>
-                  </div>
-                );
-              })}
-            </div>
-            : null}
-
-          </Col>
-          <Col md={2}>
-            <button className="btn btn-primary" onClick={this.handleGetCommentCount}>REFRESH COUNT</button>
-          </Col>    
-          <Col md={4}>
-            <table className="table">
-            <tbody>
-              {this.props.CommentCounts
-              ? (this.props.CommentCounts.map((CommentCount,index)=>(
-                  <tr key={'comment_count_'+index}>
-                    <td>{CommentCount.created_date.split('T')[0]}</td>
-                    <td>{CommentCount.count}</td>
-                  </tr>
-                )))
-              : null}
-            </tbody>
-            </table>
-          </Col>   
-        </Row>
-      </section>
-    );
-  }
-}
-
-
 class CommentHistoryV2 extends Component{
   constructor(props,context) {
     super(props,context);
+    this.state = {CommentCounts:[]}
   }
 
   handleGetCommentCount = (event) => {
@@ -880,37 +732,35 @@ class CommentHistoryV2 extends Component{
     var post_index = this.props.post_index;
     var Posts = rstore.getState().Pages.data[page_index].Posts.data;
     var post_id = Posts[post_index].id;
-    var page_id = post_id.split('_')[0];
-    
-    fetch(settings.base_dir+'/msg/countcomments?post_id='+post_id+'&page_id='+page_id,{
-      method: "GET",
-      headers: {"Content-Type": "application/x-www-form-urlencoded"}
-    }).then(function (res) {
-      return res.json();
-    }).then(function(response){
-      rstore.dispatch({
-        type:'GET_COMMENT_COUNTS_V2_RESPONSE_SUCCESS',
-        page_index:page_index,
-        post_index:post_index,
-        CommentCounts:response
-      });
-      rerender();
+    //var page_id = post_id.split('_')[0];
+    var PAGE_ACCESS_TOKEN = rstore.getState().Pages.data[page_index].access_token;
+
+    var limit = 100;
+    var uri = 'https://graph.facebook.com/v2.8/'+post_id+'/comments';
+    var qparams = {
+      access_token: PAGE_ACCESS_TOKEN,
+      limit: limit,
+      order: 'reverse_chronological',
+      fields: 'id,message,created_time,from'
+    };
+
+    var options = {max_rows:1000,matchFunc:(x,i)=>{
+      return moment(x.created_time).diff(moment().subtract(7,'d'),'days') < 0;
+    }};
+
+    var that = this;
+    fbRequestIterator(uri,qparams,limit,options)
+    .then(function(data){
+      var CommentCounts = countComment(data);
+      CommentCounts.sort(dateCompare);
+      CommentCounts.pop();
+      if(CommentCounts){
+        that.setState({CommentCounts:CommentCounts});
+      }
     });
   }
 
   render(){
-
-    if(this.props.CommentCounts){
-      var CommentCountsLast7Days;
-      var display_days = 7;
-      var size = this.props.CommentCounts.length;
-      if(size < display_days){
-        CommentCountsLast7Days = this.props.CommentCounts;
-      }else{
-        CommentCountsLast7Days = this.props.CommentCounts.slice(size-display_days,size);
-      }
-    }
-
     return(
       <section id="CommentHistory">
         <Row>
@@ -920,10 +770,10 @@ class CommentHistoryV2 extends Component{
           <Col md={4}>
             <table className="table">
             <tbody>
-              {CommentCountsLast7Days
-              ? (CommentCountsLast7Days.map((CommentCount,index)=>(
-                  <tr key={this.props.post_index+'_comment_count_'+index}>
-                    <td>{CommentCount.created_date.split('T')[0]}</td>
+              {this.state.CommentCounts && this.state.CommentCounts.length
+              ? (this.state.CommentCounts.map((CommentCount,i)=>(
+                  <tr key={this.props.post_index+'_comment_count_'+i}>
+                    <td>{CommentCount.date}</td>
                     <td>{CommentCount.count}</td>
                   </tr>
                 )))
@@ -1128,7 +978,7 @@ class PageManager extends Component{
               </div>
             </Col>
             <Col md={3}>
-              <span>Label Chosen : {(this.props.Page.chosen_label_index || this.props.Page.chosen_label_index == 0) ? this.props.Page.Labels.data[this.props.Page.chosen_label_index].name : ''}</span>
+              <span>Label Chosen : {(this.props.Page.chosen_label_index || this.props.Page.chosen_label_index == 0) ? this.props.Page.Labels.data[this.props.Page.chosen_label_index].id : ''}</span>
             </Col>
           </Row>
           : null
@@ -1208,7 +1058,6 @@ class PostManager extends Component{
   }
 
   render(){
-
     if(this.props.Post.Comments && this.props.Post.Comments.data.length > 0){
       var latest_comment_time = moment(this.props.Post.Comments.data[0].created_time);
       var oldest_comment_time = moment(this.props.Post.Comments.data[this.props.Post.Comments.data.length-1].created_time);
@@ -1219,7 +1068,7 @@ class PostManager extends Component{
 
         <div style={{fontSize:"16px",fontWeight:"bold"}}>
           <span id={(this.props.page_index+1)+'-'+(this.props.index+1)}>{'#'+(this.props.page_index+1)+'-'+(this.props.index+1)+'] '}</span>
-          <a href={facebook_base_url+this.props.Post.id.split('_')[0]+'/posts/'+this.props.Post.id.split('_')[1]} target="_blank">POST</a>
+          <a href={FACEBOOK_URL+this.props.Post.id.split('_')[0]+'/posts/'+this.props.Post.id.split('_')[1]} target="_blank">POST</a>
           <span name="created_time">{' '+moment.utc(this.props.Post.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')}</span>
         </div>
 
@@ -1562,7 +1411,7 @@ class CommentManager extends Component{
               >SEND PM</span> : null}
 
             {this.props.Comment.private_reply_conversation ? 
-              <a href={facebook_base_url+this.props.Comment.private_reply_conversation.link} target="_blank">OpenPage </a> : null}
+              <a href={FACEBOOK_URL+this.props.Comment.private_reply_conversation.link} target="_blank">OpenPage </a> : null}
           
             {(!this.props.Comment.can_reply_privately && !this.props.Comment.private_reply_conversation) ?
               <span>X</span> : null}
@@ -1677,6 +1526,148 @@ class MessageManager extends Component{
 var rerender = function(){
   render(<AutoReplyApp state={rstore.getState()} />, document.getElementById('app'));
 }
-window.rerender = rerender;
 
+window.rerender = rerender;
 rerender();
+
+
+function fbRequestIterator(uri,qparams,limit,options={}){
+  var max_rows = options.max_rows === undefined ? limit-1 : options.max_rows;
+  var matchFunc = options.matchFunc === undefined ? (x,i)=>(false) : options.matchFunc;
+  var data = [];
+  return reqWhile().then(function(r){
+    return data;
+  });
+
+  function reqWhile (){
+    return fetch(uri+(qparams ? '?'+qs.stringify(qparams) : ''),{
+      method: 'GET',
+      headers:{"Content-Type": "application/x-www-form-urlencoded"}
+    }).then(function(res){
+      return res.json();
+    }).then(function(response){
+      if(response && response.data){
+        data = data.concat(response.data);
+        console.log(response);
+        var stop = false;
+        data.map((x,i)=>{
+          matchFunc(x,i) ? stop = true : null;
+        });
+
+        if(response.paging && response.paging.next && data.length < max_rows && stop === false){
+          uri = response.paging.next;
+          qparams = undefined;
+          return reqWhile();
+        }
+      }
+    });
+  }
+}
+
+function countComment(data){
+  if(data && data.length>=1 && data[0].created_time){
+    var counter = [];
+    data.map((x)=>{
+      var date = moment(x.created_time).utcOffset(8).format('YYYY-MM-DD');
+      if(typeof counter[date] === 'undefined'){
+        counter[date] = 1;
+      }else{
+        counter[date] = counter[date] + 1;
+      }
+    });
+    var counter2 = [];
+    for(var key in counter){
+       if (counter.hasOwnProperty(key)) {
+          counter2.push({date:key,count:counter[key]});
+       }
+    }
+    return counter2;
+  }else{
+    throw new Error('WRONG INPUT PARAMETERS');
+  }
+}
+
+function dateCompare(a, b){
+  var c = new Date(a.date);
+  var d = new Date(b.date);
+
+  if (c > d) {
+    return -1;
+  }
+  if (c < d) {
+    return 1;
+  }
+  // a must be equal to b
+  return 0;
+}
+
+function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
+
+  var batches = [];
+  while(requests.length > 0){
+    batches.push(JSON.stringify(requests.splice(0,50)));
+  }
+  
+  var uri = 'https://graph.facebook.com/v2.8/';
+
+  return Promise.mapSeries(batches,(batch,i)=>{
+    var qparams = {
+      access_token: PAGE_ACCESS_TOKEN,
+      batch: batch,
+      include_headers:false
+    };    
+    return fetch(uri+(qparams ? '?'+qs.stringify(qparams) : ''),{
+      method: 'POST',
+      headers:{'Content-Type': 'application/x-www-form-urlencoded'}
+    }).then(function(res){
+      return res.json();
+    }).then(function(batched_response){
+      return batched_response;
+    });
+  }).then(function(batched_responses){
+
+    var responses = [];
+    var parsed_responses = [];
+    if(batched_responses && batched_responses.length >= 1){
+      batched_responses.map((batched_response,i)=>{
+        responses = responses.concat(batched_response);
+      });
+    }
+
+    responses.map((response,i)=>{
+      if(response.code === 200 && response.body){
+        parsed_responses[i] = JSON.parse(response.body);
+      }
+    })
+
+    return parsed_responses;
+  });
+}
+
+function batchGetComments(){
+
+  var PAGE_ACCESS_TOKEN = rstore.getState().Pages.data[1].access_token;
+  var post_ids = [
+    '1769068019987617_1981784442049306',
+    '1769068019987617_1977542135806870',
+    '1769068019987617_1977525009141916'
+  ];
+  var batch = [];
+  var qparams = {
+    limit:25,
+    order:'reverse_chronological',
+    fields:'id,message,from,created_time,can_reply_privately,private_reply_conversation,can_like,can_hide,comment_count,attachment,is_hidden,is_private'
+  }
+  post_ids.map((post_id,i)=>{
+    var uri = post_id+'/comments';
+    batch[i] = {method:'GET',relative_url:uri+'?'+qs.stringify(qparams)};
+  });
+
+  fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,batch)
+  .then(function(responses){
+    window.responses = responses;
+    console.log(responses);
+  });
+
+}
+window.batchGetComments = batchGetComments;
