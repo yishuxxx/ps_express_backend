@@ -4,13 +4,16 @@
 <html lang="en">
 <head>
     <% include ./partials/head %>
-    <script src="<%= base_dir %>/vendor/jquery-3.1.1.js"></script>
     <!-- Latest compiled and minified CSS -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/latest/css/bootstrap.min.css"/>
-
+    <style>
+    	.PostCard .CommentRow .label-border-white{background-color:#fff;color:#777;border:1px solid #777;}
+    </style>
 </head>
 <body className="container" style="background:#e9ebee;">
-    <div id="app"></div>    
+    <div id="app"></div>
+   	<script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+   	<script src="https://maxcdn.bootstrapcdn.com/bootstrap/latest/js/bootstrap.min.js"></script>
     <script type="text/javascript" src="<%= base_dir %>/javascripts/bundle_autopm.js"></script>
 </body>
 </html>

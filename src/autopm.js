@@ -7,6 +7,9 @@ import moment from 'moment';
 import { syDateFormat } from './Utils/Helper';
 import qs from 'qs';
 import Promise from 'bluebird';
+import Immutable from 'seamless-immutable';
+window.Immutable = Immutable;
+import {randomString} from './Utils/Helper';
 
 const greyborder = {backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px"};
 const blueborder = {backgroundColor:'aliceblue',margin:"3px 0px 3px 50px",border:"1px solid darkturquoise",padding:"5px 10px 5px 10px",borderRadius:"3px"};
@@ -41,56 +44,94 @@ window.fbAsyncInit = function() {
   fjs.parentNode.insertBefore(js, fjs);
 }(document, 'script', 'facebook-jssdk'));
 
-var initial_state = {
-  auto_refresh_string:"",
-  auto_refresh_interval:5,
-  auto_refresh_repeat:1000,
-  auto_refresh_is_on:false
-};
+var initial_state = Immutable({Pages:[]});
 
-var updateStateDependencies = function(state){
-  return state;
-}
-
-var reducer = function(state={},action=null){
+var reducer = function(state,action=null){
 
   switch(action.type){
     case 'PAGES_CREATE_RS':
-      if(state.Pages && state.Pages.data && state.Pages.data.length >= 1){
-        action.response.data.map((Page,index)=>{
-          state.Pages.data[index].access_token = Page.access_token;
+      console.log(action);
+      var Pages = state.Pages;
+      var PagesLoaded = action.pages ? action.pages.data : undefined;
+      if(Pages && Pages.length >= 1){
+        PagesLoaded.map((PageLoaded,i)=>{
+          state = Immutable.setIn(state,['Pages',i,'access_token'],PageLoaded.access_token);
         });
       }else{
-        state.Pages = action.response;
+        state = Immutable.setIn(state,['Pages'],PagesLoaded);
       }
       break;
 
-    case 'PAGE_POSTS_CREATE_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts = action.response;
+    case 'GET_FB_PAGE_POSTS':
+      console.log(action);
+      action.Posts.map((Post,i)=>{
+        if(typeof action.Posts[i].stats === 'undefined'){
+          action.Posts[i].stats = {
+            ADD_REFRESH:0,
+            ADD_PM:0,
+            ADD_COMMENT:0,
+            ADD_LABEL:0,
+            ADD_HIDDEN:0,
+            ADD_SHOWN:0
+          };
+        }
+      })
+      state = Immutable.setIn(state,['Posts'],action.Posts);
       break;
 
-    case 'PAGE_LABELS_CREATE':
-      var page_index = action.page_index;
-      var page_access_token = state.Pages.data[page_index].access_token;
-      FB.api('/me/labels?access_token='+page_access_token+'&limit=100',function(response){
-        if(response.data && response.data.length>0){
-          rstore.dispatch({
-            type:'PAGE_LABELS_CREATE_RESPONSE_SUCCESS',
-            page_index: page_index,
-            response:response
-          });
-          rerender();
-        }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-          gsetUserLoginAndPage();
-        }else if(response.error){
-          alert(response.error.message);
-          sy.error_log.push(response);
+    case 'GET_FB_POSTS_COMMENTS':
+      console.log(action);
+      var commentss = action.comments;
+      commentss.map((comments,i)=>{
+        if(typeof state.Posts[i].first_comments === 'undefined'){ // FIRST LOAD
+          state = Immutable.setIn(state,['Posts',i,'first_comments'],comments);
+          state = Immutable.setIn(state,['Posts',i,'comments'],comments);
         }else{
-          sy.error_log.push(response);
+          state = Immutable.setIn(state,['Posts',i,'comments'],comments);
         }
       });
       break;
 
+    case 'RECORD_STATISTICS':
+      console.log(action);
+      var post_id = action.post_id;
+      var post_i = state.Posts.findIndex((Post)=>(Post.id === post_id));
+      var Post = state.Posts[post_i];
+      //console.log(Post);
+      var count = Post.stats[action.stat_type] + 1;
+      //console.log(action.stat_type);
+      //console.log(count);
+      //console.log(post_i);
+      
+      //state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_REFRESH'],100);
+      state = Immutable.setIn(state,['Posts',post_i,'stats',action.stat_type],count);
+      //console.log('$$$ IT DOES NOT FINISH SET STATE');
+      /*
+      switch(action.stat_type){
+        case 'ADD_REFRESH':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_REFRESH'],count);
+          break;
+        case 'ADD_PM':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_PM'],count);
+          break;
+        case 'ADD_COMMENT':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_COMMENT'],count);
+          break;
+        case 'ADD_LABEL':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_LABEL'],count);
+          break;
+        case 'ADD_HIDDEN':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_HIDDEN'],count);
+          break;
+        case 'ADD_SHOWN':
+          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_SHOWN'],count);
+          break;
+        default:
+          break;
+      }
+      */
+      break;
+      
     case 'PAGE_LABELS_CREATE_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Labels = action.response;
       break;
@@ -102,54 +143,6 @@ var reducer = function(state={},action=null){
         state.Pages.data[action.page_index].chosen_label_index = null;
       }
       break;  
-
-    case 'POST_COMMENTS_LOAD_MORE':
-    case 'POST_COMMENTS_REFRESH':
-      var page_index = action.page_index;
-      var post_index = action.post_index;
-      var post_id = state.Pages.data[page_index].Posts.data[post_index].id;
-      var type = action.type;
-      var Comments = state.Pages.data[page_index].Posts.data[post_index].Comments;
-      var page_access_token = state.Pages.data[page_index].access_token;
-
-      if((!Comments) || (Comments && Comments.paging.next) || type == 'POST_COMMENTS_REFRESH'){
-        var url = settings.fb.graph_api_url+'/'+post_id+'/comments?limit=25&access_token='+page_access_token+'&order=reverse_chronological&fields=id,message,from,created_time,can_reply_privately,private_reply_conversation,can_like,can_hide,comment_count,attachment,is_hidden,is_private';
-        if(Comments && Comments.paging.next && type == 'POST_COMMENTS_LOAD_MORE'){
-          url = Comments.paging.next;
-        }
-
-        fetch(url,{
-          method: 'GET',
-          headers:{"Content-Type": "application/x-www-form-urlencoded"}
-        }).then(function (res) {
-          return res.json();    
-        }).then(function(response){
-          if(response.data && response.data.length>0){
-            rstore.dispatch({
-              type:type+'_RESPONSE_SUCCESS',
-              page_index: page_index,
-              post_index: post_index,
-              response:response
-            });
-            rerender();
-
-            if(action.hide_comments >= 0){
-              sy.hideComments(state,page_index,post_index,action.hide_comments);
-            }
-
-          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-            gsetUserLoginAndPage();
-          }else if(response.error){
-            sy.error_log.push(response);
-          }else{
-            sy.error_log.push(response);
-          }
-        });
-
-      }else{
-        alert('No more COMMENTS to load...')
-      }
-      break;
 
     case 'POST_COMMENTS_LOAD_MORE_RESPONSE_SUCCESS':
     case 'POST_COMMENTS_REFRESH_RESPONSE_SUCCESS':
@@ -287,39 +280,6 @@ var reducer = function(state={},action=null){
 
     case 'COMMENT_TOGGLE_RESPONSE_SUCCESS':
       state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].is_hidden = action.is_hidden;
-      break;
-
-    case 'LABEL_APPLY':
-      var page_index = action.page_index;
-      var post_index = action.post_index;
-      var comment_index = action.comment_index;
-
-      var chosen_label_index = state.Pages.data[page_index].chosen_label_index;
-      if(chosen_label_index || chosen_label_index === 0){
-      var page_access_token = state.Pages.data[page_index].access_token;
-      var uid = state.Pages.data[page_index].Posts.data[post_index].Comments.data[comment_index].from.id;
-      var label_id = state.Pages.data[page_index].Labels.data[state.Pages.data[page_index].chosen_label_index].id; 
-        FB.api(
-          '/'+label_id+'/users?access_token='+page_access_token+'&user_ids=['+uid+']',
-          'POST',
-          function(response){
-            if(response.success){
-              rstore.dispatch({
-                type:'LABEL_APPLY_RESPONSE_SUCCESS'
-              });
-            }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-              gsetUserLoginAndPage();
-            }else if(response.error){
-              alert(response.error.message);
-              sy.error_log.push(response);
-            }else{
-              sy.error_log.push(response);
-            }
-        });
-      }
-      break;
-
-    case 'LABEL_APPLY_RESPONSE_SUCCESS':
       break;
 
     case 'COMMENT_GET_COMMENT_REPLY':
@@ -468,7 +428,6 @@ var reducer = function(state={},action=null){
       break;
   }
 
-  state = updateStateDependencies(state);
   return state;
 }
 
@@ -483,7 +442,7 @@ var sy = {
 
 window.sy = sy;
 
-class AutoReplyApp extends Component{
+class AutoPMApp extends Component{
   constructor(props,context) {
     super(props,context);
   }
@@ -493,14 +452,10 @@ class AutoReplyApp extends Component{
       <section>
         <Row>
         <Col md={2}>
-          <AutoRefreshSetup 
-            auto_refresh_string={this.props.state.auto_refresh_string}
-            auto_refresh_is_on={this.props.state.auto_refresh_is_on}
-            auto_refresh_interval={this.props.state.auto_refresh_interval}
-            auto_refresh_repeat={this.props.state.auto_refresh_repeat}
-            auto_refresh_list={this.props.state.auto_refresh_list}
-            Pages={this.props.state.Pages}
-          />
+          <AutoPMSetup />
+        </Col>
+        <Col md={8}>
+          <AutoPMStats Posts={this.props.state.Posts}/>
         </Col>
         </Row>
       </section>
@@ -508,10 +463,10 @@ class AutoReplyApp extends Component{
   }
 }
 
-class AutoRefreshSetup extends Component{
+class AutoPMSetup extends Component{
   constructor(props,context) {
     super(props,context);
-    this.state = {config:props.config,started:false};
+    this.state = {config:props.config,started:false,last_refresh_time:undefined};
     this.started = false;
     this.autobot_started = false;
   }
@@ -531,34 +486,57 @@ class AutoRefreshSetup extends Component{
   parseConfig = (input) =>{
     var that = this;
     console.log(input);
-    var config = JSON.parse(input);
-    if(config){
-      var post_configs = configFillDefaults(config.post_configs,config.default_config);
-      console.log('post_configs');
-      console.log(post_configs);
+    var config = configFillDefaults(JSON.parse(input));
+    var post_configs = postConfigFillDefaults(config.post_configs,config.default_config);
+    var post_ids = post_configs.map((post_config)=>(post_config.post_id));
+    var pid;
+    var page_i;
+    var PAGE_ACCESS_TOKEN;
 
-      function loopGetCommentsDoJob(){
-        return getCommentsAndDoJob(post_configs)
-        .then(function(post_configs){
-          return setDelay(5000);
-        }).then(function(success){
-          if(that.started){
-            return loopGetCommentsDoJob();
-          }else if(that.started === false){
-            that.autobot_started = false;
-            return true;
-          }
+    console.log('post_configs');
+    console.log(post_configs);
+
+    function loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
+      return getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs)
+      .then(function(comments){
+        that.setState({last_refresh_time:moment().format('YYYY-MM-DD HH:mm:ss')});
+        rstore.dispatch({
+          type:'GET_FB_POSTS_COMMENTS',
+          comments: comments
         });
-      }
-
-      that.autobot_started = true;
-      gsetUserLoginAndPage()
-      .then(function(success){
-        return loopGetCommentsDoJob();
+        rerender();
       }).then(function(success){
-        console.log('STOPPED AUTO REPLYING');
-      })
+        return setDelay(config.timings.scanning_interval);
+      }).then(function(success){
+        if(that.started){
+          return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
+        }else if(that.started === false){
+          that.autobot_started = false;
+          return true;
+        }
+      });
     }
+
+    that.autobot_started = true;
+    gsetUserLoginAndPage()
+    .then(function(success){
+      pid = post_configs[0].post_id.split('_')[0];
+      page_i = rstore.getState().Pages.findIndex((Page)=>(Page.id === pid));
+      PAGE_ACCESS_TOKEN = rstore.getState().Pages[page_i].access_token;
+
+      return getFBPosts(PAGE_ACCESS_TOKEN,post_ids)
+    }).then(function(responses){
+      console.log('getFBPosts');
+      console.log(responses);
+      rstore.dispatch({
+        type:'GET_FB_PAGE_POSTS',
+        Posts: responses
+      });
+      rerender();
+      return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config.timings,post_configs);
+    }).then(function(success){
+      console.log('STOPPED AUTO REPLYING');
+    })
   }
 
   handleFBLogin = (event) => {
@@ -581,15 +559,163 @@ class AutoRefreshSetup extends Component{
         }
         <div><span>CONFIG:</span><textarea className="form-control" value={this.state.config ? this.state.config : ''} onChange={this.handleConfigChange}/></div>
         <button className="btn btn-primary" onClick={this.handleStart}>{this.state.started ? 'STOP' : 'START'}</button>
-
+        <h4>{this.state.last_refresh_time ? 'REFRESH AT:'+moment(this.state.last_refresh_time).format('HH:mm:ss') : null}</h4>
       </section>
+    );
+  }
+}
+
+class AutoPMStats extends Component{
+  constructor(props) {
+    super(props);
+  }
+
+  render(){
+    return(
+      <section>
+        {this.props.Posts && this.props.Posts.length
+          ? this.props.Posts.map((Post,i)=>{
+              var StatsDisplay = 
+                <span>
+                  <span>{( i+1+') '+Post.message.substring(0,20) )}</span>
+                  {Post.stats.ADD_PM > 0 ? <span className="label label-success">{'pm:'+Post.stats.ADD_PM}</span> : null}
+                  {Post.stats.ADD_COMMENT > 0 ? <span className="label label-info">{'comment:'+Post.stats.ADD_COMMENT}</span> : null}
+                  {Post.stats.ADD_LABEL > 0 ? <span className="label label-danger">{'label:'+Post.stats.ADD_LABEL}</span> : null}
+                  {Post.stats.ADD_HIDDEN > 0 ? <span className="label label-default">{'hidden:'+Post.stats.ADD_HIDDEN}</span> : null}
+                  {Post.stats.ADD_SHOWN > 0 ? <span className="label label-default">{'shown:'+Post.stats.ADD_SHOWN}</span> : null}
+                </span>;
+              return <Accordion 
+                key={'Accordion_'+Post.id}
+                title={ Post.message 
+                          ? StatsDisplay
+                          : null
+                      }
+                collapsed={false}
+              >
+                <PostCard Post={Post}/>
+              </Accordion>
+            })
+          : null
+        }
+      </section>
+    );
+  }
+}
+
+class PostCard extends Component{
+  constructor(props) {
+    super(props);
+  }
+
+  render(){
+    return(
+      <section className="PostCard">
+        <a href={FACEBOOK_URL+this.props.Post.id.split('_')[0]+'/posts/'+this.props.Post.id.split('_')[1]} target="_blank">POST</a>
+        <span className="post_created_time">{' '+moment.utc(this.props.Post.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm')}</span>
+        <div className="post_id">{this.props.Post.id}</div>
+        {this.props.Post.message ? <div name="message">{this.props.Post.message.substring(0,20)}</div> : null}
+        {this.props.Post.story ? <div name="story">{this.props.Post.story.substring(0,20)}</div> : null}
+        <table className="table">
+          <thead>
+            <tr>
+              <th style={{width:'80px'}}>#</th>
+              <th style={{width:'200px'}}>Time</th>
+              <th style={{width:'200px'}}>Name</th>
+              <th style={{width:'100px'}}>Hidden</th>
+              <th>Message</th>
+              <th style={{width:'80px'}}>Replies</th>
+              <th style={{width:'120px'}}>Conversation</th>
+            </tr>
+          </thead>
+          <tbody>
+          {this.props.Post.comments && this.props.Post.comments.data.length>=1 
+            ? this.props.Post.comments.data.map((Comment,i)=>(
+                <CommentRow key={'CommentRow_'+Comment.id} Comment={Comment} ci={i}/>
+              ))
+            : null
+          }
+          </tbody>
+        </table>
+      </section>
+    );
+  }
+}
+
+class CommentRow extends Component{
+  constructor(props) {
+    super(props);
+  }
+
+  render(){
+    return(
+      <tr className="CommentRow">
+        <td>{this.props.ci+1+') '}</td>
+        <td>{moment(this.props.Comment.created_time).utcOffset(8).format('YYYY-MM-DD HH:mm:ss')}</td>
+        <td>{this.props.Comment.from.name}</td>
+        <td>{<span className={'label label-default'+(this.props.Comment.is_hidden ? '' : ' label-border-white')}>{this.props.Comment.is_hidden ? 'hidden' : 'shown'}</span>}</td>
+        <td>{this.props.Comment.message}</td>
+        <td>{this.props.Comment.comment_count}</td>
+        <td>
+            {this.props.Comment.private_reply_conversation 
+              ? <a href={'https://www.facebook.com'+this.props.Comment.private_reply_conversation.link}>Conversation</a> 
+              : <span className={'label label-default'+(this.props.Comment.can_reply_privately ? ' label-border-white' : '')}>{this.props.Comment.can_reply_privately ? 'NOT PM-ed' : 'X'}</span>
+            }
+        </td>
+      </tr>
+    );
+  }
+}
+
+class Accordion extends Component{
+  constructor(props,context) {
+    super(props,context);
+    this.state = {unique_key:randomString('16','#aA')};
+  }
+  render(){
+    return(
+      <div className="panel panel-default" style={{marginBottom:'0px'}}>
+        <div className="panel-heading" role="tab" id="headingOne">
+          <h4 className="panel-title">
+            <a  role="button" 
+                data-toggle="collapse" 
+                data-parent="#accordion" 
+                href={"#"+this.state.unique_key} 
+                aria-controls={this.state.unique_key}
+                aria-expanded={this.props.collapsed ? false : true} 
+            >
+              {this.props.title}
+            </a>
+          </h4>
+        </div>
+        <div  id={this.state.unique_key} 
+              className={"panel-collapse collapse"+(this.props.collapsed ? ' in' : '')} 
+              role="tabpanel" 
+              aria-labelledby="headingOne"
+        >
+          <div className="panel-body">
+            {this.props.children}
+          </div>
+        </div>
+      </div>
+    );
+  }
+}
+
+class PostsCommentsHistory extends Component{
+  constructor(props) {
+    super(props);
+  }
+
+  render(){
+    return(
+      
     );
   }
 }
 
 
 var rerender = function(){
-  render(<AutoReplyApp state={rstore.getState()} />, document.getElementById('app'));
+  render(<AutoPMApp state={rstore.getState()} />, document.getElementById('app'));
 }
 
 window.rerender = rerender;
@@ -642,7 +768,7 @@ function getFBPages(){ /* sy.userAccessToken */
   .then(function(response){
     if(response.error){
       if(response.error.code === 190 && response.error.error_subcode === 463){
-         throw new Error('ErrorFacebookTokenExpired');
+        throw new Error('ErrorFacebookTokenExpired');
       }else{
         throw new Error(JSON.stringify(response));
       } 
@@ -654,7 +780,7 @@ function getFBPages(){ /* sy.userAccessToken */
 function setFBPages(response){/* rstore, rerender */
   rstore.dispatch({
     type:'PAGES_CREATE_RS',
-    response:response
+    pages:response
   });
   rerender();
   return true;
@@ -740,7 +866,7 @@ function postCommentVisibilities(PAGE_ACCESS_TOKEN,comment_ids,do_hides){
   });
 }
 
-function postPrivateReplies(PAGE_ACCESS_TOKEN,comment_ids,messages){
+function postPrivateReplies(PAGE_ACCESS_TOKEN,comment_ids,messages,interval){
   //'/'+comment_id+'/private_replies?access_token='+page_access_token+'&message='+private_reply,
   var batch = [];
   comment_ids.map((comment_id,i)=>{
@@ -754,7 +880,7 @@ function postPrivateReplies(PAGE_ACCESS_TOKEN,comment_ids,messages){
   });
 }
 
-function postCommentComments(PAGE_ACCESS_TOKEN,comment_ids,messages){
+function postCommentComments(PAGE_ACCESS_TOKEN,comment_ids,messages,interval){
   //'/'+comment_id+'/comments?access_token='+page_access_token+'&message='+comment_reply,
   var batch = [];
   comment_ids.map((comment_id,i)=>{
@@ -895,8 +1021,9 @@ function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
   });
 }
 
-function fbAPIRequestSerialBatcher(PAGE_ACCESS_TOKEN,requests){
+function fbAPIRequestSerialBatcher(PAGE_ACCESS_TOKEN,requests,interval){
   
+  interval = typeof interval === 'number' ? interval : 3000;
   var uri = 'https://graph.facebook.com/v2.8/';
   var r = [];
   var i = 0;
@@ -910,8 +1037,8 @@ function fbAPIRequestSerialBatcher(PAGE_ACCESS_TOKEN,requests){
       return res.json();
     }).then(function(response){
       r.push(response);
-      console.log('waiting 3000ms');
-      return setDelay(3000);
+      console.log('waiting '+interval+'ms');
+      return setDelay(interval);
     }).then(function(success){
       if(i < requests.length-1){
         i = i + 1;
@@ -1008,9 +1135,10 @@ function parseARString (str) {
   }
 }
 
-function getCommentsAndDoJob(post_configs){
+function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
   var post_ids = post_configs.map((post_config)=>(post_config.post_id));
-  
+  var message_interval = timings.message_interval;
+
   var do_hides = [];
   var do_hide_ids = [];
   var pm_messages = [];
@@ -1020,14 +1148,13 @@ function getCommentsAndDoJob(post_configs){
   var label_ids = [];
   var label_id_ids = [];
   
-  var pid = pid = post_ids[0].split('_')[0];
-  var page_i = rstore.getState().Pages.data.findIndex((Page)=>(Page.id === pid));
-  var PAGE_ACCESS_TOKEN = rstore.getState().Pages.data[page_i].access_token;
+  var r = {};
 
   return getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids)
   .then(function(responses){
     console.log('getFBPostsComments');
     console.log(responses);
+    r.comments = responses;
 
     responses.map((comment,j)=>{
       if(comment.error && comment.error.code === 190 /*&& comment.error.error_subcode === 463*/){
@@ -1040,46 +1167,76 @@ function getCommentsAndDoJob(post_configs){
           if(Comment.can_hide && Comment.is_hidden && i < post_config.unhide){
             do_hides.push(false);
             do_hide_ids.push(Comment.id);
+            recordStatistics(post_config.post_id,'ADD_SHOWN');
           }else if(Comment.can_hide && !Comment.is_hidden && i >= post_config.unhide){
             do_hides.push(true);
             do_hide_ids.push(Comment.id);
+            recordStatistics(post_config.post_id,'ADD_HIDDEN');
           }else{
             // SKIP
           }
         }
         
-        if(Comment.can_reply_privately && shouldPM(Comment.message)){
-          pm_messages.push(post_config.pm_message);
-          pm_message_ids.push(Comment.id);
-          comment_messages.push(post_config.comment_message);
-          comment_message_ids.push(Comment.id);
-          label_ids.push(post_config.label_id);
-          label_id_ids.push(Comment.id);
-        }else if(!Comment.can_reply_privately && Comment.comment_count === 0 && shouldPM(Comment.message)){
-          comment_messages.push(post_config.unable_pm_comment_message);
-          comment_message_ids.push(Comment.id);
+        if(post_config.do_pm === true){
+          if(Comment.can_reply_privately && shouldPM(Comment.message)){
+            pm_messages.push(post_config.pm_message);
+            pm_message_ids.push(Comment.id);
+            comment_messages.push(post_config.comment_message);
+            comment_message_ids.push(Comment.id);
+            recordStatistics(post_config.post_id,'ADD_PM');
+            console.log('$$$ WHY IT DOES NOT EVEN REACH HERE'); 
+            recordStatistics(post_config.post_id,'ADD_COMMENT');
+            if(typeof post_config.label_id === 'number' && post_config.label_id){
+              label_ids.push(post_config.label_id);
+              label_id_ids.push(Comment.from.id);
+              recordStatistics(post_config.post_id,'ADD_LABEL');
+            }
+          }else if(!Comment.can_reply_privately && Comment.comment_count === 0 && shouldPM(Comment.message)){
+            comment_messages.push(post_config.unable_pm_comment_message);
+            comment_message_ids.push(Comment.id);
+            recordStatistics(post_config.post_id,'ADD_COMMENT');
+          }
+
         }
       });
       //return getFBPageLabels(PAGE_ACCESS_TOKEN);
     });
+    console.log('$$$ IF IT SKIPPED THIS THEN THERE IS A FUCKING BIG PROBLEM');    
+
     return postCommentVisibilities(PAGE_ACCESS_TOKEN,do_hide_ids,do_hides);
   }).then(function(response){
     console.log('postCommentVisibilities');    
     console.log(response);
-    return postPrivateReplies(PAGE_ACCESS_TOKEN,pm_message_ids,pm_messages);
+    if(pm_messages && pm_messages.length>=1){
+      return postPrivateReplies(PAGE_ACCESS_TOKEN,pm_message_ids,pm_messages,message_interval);
+    }else{
+      return true;
+    }
   }).then(function(response){
     console.log('postPrivateReplies');
     console.log(response);
-    return postCommentComments(PAGE_ACCESS_TOKEN,comment_message_ids,comment_messages);
+    if(comment_messages && comment_messages.length>=1){
+      return postCommentComments(PAGE_ACCESS_TOKEN,comment_message_ids,comment_messages,message_interval);
+    }else{
+      return true;
+    }
   }).then(function(response){
     console.log('postCommentComments');
     console.log(response);
-    return response;
+    if(label_ids && label_ids.length>=1){
+      return postFBLabels(PAGE_ACCESS_TOKEN,label_ids,label_id_ids);
+    }else{
+      return true;
+    }
+  }).then(function(response){
+    console.log('postFBLabels');
+    console.log(response);
+    return r.comments; //FINAL RETURN VALUE
   }).catch(function(err){
     if(err instanceof Error && err.message === 'ErrorFacebookTokenExpired'){
       return gsetUserLoginAndPage()
       .then(function(success){
-        return getCommentsAndDoJob(post_configs);
+        return getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
       });
     }
   });
@@ -1089,12 +1246,28 @@ function shouldPM(message){
   if(message.toLowerCase().indexOf('pm') !== -1){
     return true;
   }else{
-    return false;
+    return true;
   }
 }
 
-function configFillDefaults(post_configs,default_config){
+function configFillDefaults(config){
+  if(typeof config.timings === 'undefined'){
+    config.timings = {};
+  }
+  if(typeof config.timings.scanning_interval === 'undefined'){
+    config.timings.scanning_interval = 5000;
+  }
+  if(typeof config.timings.message_interval === 'undefined'){
+    config.timings.message_interval = 3000;
+  }
+  return config;
+}
+
+function postConfigFillDefaults(post_configs,default_config){
   post_configs.map((post_config,i)=>{
+    if(typeof post_config.do_pm === 'undefined'){
+      post_config.do_pm = default_config.do_pm;
+    }
     if(typeof post_config.unhide === 'undefined'){
       post_config.unhide = default_config.unhide;
     }
@@ -1112,4 +1285,20 @@ function configFillDefaults(post_configs,default_config){
     }
   });
   return post_configs;
+} 
+
+function recordStatistics(post_id,stat_type){
+  if(typeof window.autopm_stats === 'undefined'){
+    window.autopm_stats = [];
+  }
+  window.autopm_stats.push(post_id+' - '+stat_type);
+
+  rstore.dispatch({
+    type:'RECORD_STATISTICS',
+    post_id:post_id,
+    stat_type:stat_type
+  });
+  //console.log('$$$ OK IT DOES NOT EVEN FINISH THE DISPATCH');
+  //rerender();
+  //console.log('$$$ OK IT DOES NOT EVEN FINISH THE RENDER');
 }
