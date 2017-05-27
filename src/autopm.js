@@ -2,27 +2,12 @@ import {settings} from '../settings';
 import React, {Component} from 'react';
 import {render} from 'react-dom';
 import { createStore } from 'redux';
-import { Grid, Row, Col, Button, FormControl } from 'react-bootstrap';
+import { Grid, Row, Col, FormControl } from 'react-bootstrap';
 import moment from 'moment';
-import { syDateFormat } from './Utils/Helper';
 import qs from 'qs';
 import Promise from 'bluebird';
 import Immutable from 'seamless-immutable';
-window.Immutable = Immutable;
 import {randomString} from './Utils/Helper';
-
-const greyborder = {backgroundColor:'#fff',margin:"3px 0px 3px 0px",border:"1px solid #bbb",padding:"5px 10px 5px 10px",borderRadius:"3px"};
-const blueborder = {backgroundColor:'aliceblue',margin:"3px 0px 3px 50px",border:"1px solid darkturquoise",padding:"5px 10px 5px 10px",borderRadius:"3px"};
-const greenborderbottom = {
-    borderWidth: '1px',
-    borderColor: 'darkturquoise',
-    borderStyle: 'solid none none none',
-    backgroundColor: '#fefefe'
-};
-const boldfont = {fontWeight:'bold'};
-
-const message_from_self = {textAlign:'right'};
-const message_from_other = {textAlign:'left'};
 
 const FACEBOOK_URL = settings.fb.base_url;
 const GRAPH_API_URL = settings.fb.graph_api_url;
@@ -50,12 +35,11 @@ var reducer = function(state,action=null){
 
   switch(action.type){
     case 'PAGES_CREATE_RS':
-      console.log(action);
       var Pages = state.Pages;
       var PagesLoaded = action.pages ? action.pages.data : undefined;
       if(Pages && Pages.length >= 1){
-        PagesLoaded.map((PageLoaded,i)=>{
-          state = Immutable.setIn(state,['Pages',i,'access_token'],PageLoaded.access_token);
+        Pages.map((Page,i)=>{
+          state = Immutable.setIn(state,['Pages',i,'access_token'],PagesLoaded[i].access_token);
         });
       }else{
         state = Immutable.setIn(state,['Pages'],PagesLoaded);
@@ -63,365 +47,52 @@ var reducer = function(state,action=null){
       break;
 
     case 'GET_FB_PAGE_POSTS':
-      console.log(action);
-      action.Posts.map((Post,i)=>{
-        if(typeof action.Posts[i].stats === 'undefined'){
-          action.Posts[i].stats = {
-            ADD_REFRESH:0,
-            ADD_PM:0,
-            ADD_COMMENT:0,
-            ADD_LABEL:0,
-            ADD_HIDDEN:0,
-            ADD_SHOWN:0
-          };
-        }
-      })
-      state = Immutable.setIn(state,['Posts'],action.Posts);
+      var Posts = action.Posts;
+      if(Posts && Posts.length>=1){
+        Posts.map((Post,i)=>{
+          if(typeof Posts[i].stats === 'undefined'){
+            Posts[i].stats = {
+              ADD_REFRESH:0,
+              ADD_PM:0,
+              ADD_COMMENT:0,
+              ADD_LABEL:0,
+              ADD_HIDDEN:0,
+              ADD_SHOWN:0
+            };
+          }
+        });
+        state = Immutable.setIn(state,['Posts'],Posts);
+      }else{
+        window.error_log.push(new Error('GET_FB_PAGE_POSTS Posts.length<1'))
+      }
       break;
 
     case 'GET_FB_POSTS_COMMENTS':
-      console.log(action);
       var commentss = action.comments;
-      commentss.map((comments,i)=>{
-        if(typeof state.Posts[i].first_comments === 'undefined'){ // FIRST LOAD
-          state = Immutable.setIn(state,['Posts',i,'first_comments'],comments);
-          state = Immutable.setIn(state,['Posts',i,'comments'],comments);
-        }else{
-          state = Immutable.setIn(state,['Posts',i,'comments'],comments);
-        }
-      });
+      if(commentss && commentss.length>=1){
+        commentss.map((comments,i)=>{
+          if(typeof state.Posts[i].first_comments === 'undefined'){ // FIRST LOAD
+            state = Immutable.setIn(state,['Posts',i,'first_comments'],comments);
+            state = Immutable.setIn(state,['Posts',i,'comments'],comments);
+          }else{
+            state = Immutable.setIn(state,['Posts',i,'comments'],comments);
+          }
+        });
+      }else{
+        window.error_log.push(new Error('GET_FB_POSTS_COMMENTS commentss.length<1'))
+      }
       break;
 
     case 'RECORD_STATISTICS':
-      console.log(action);
       var post_id = action.post_id;
       var post_i = state.Posts.findIndex((Post)=>(Post.id === post_id));
       var Post = state.Posts[post_i];
-      //console.log(Post);
       var count = Post.stats[action.stat_type] + 1;
-      //console.log(action.stat_type);
-      //console.log(count);
-      //console.log(post_i);
-      
-      //state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_REFRESH'],100);
       state = Immutable.setIn(state,['Posts',post_i,'stats',action.stat_type],count);
-      //console.log('$$$ IT DOES NOT FINISH SET STATE');
-      /*
-      switch(action.stat_type){
-        case 'ADD_REFRESH':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_REFRESH'],count);
-          break;
-        case 'ADD_PM':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_PM'],count);
-          break;
-        case 'ADD_COMMENT':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_COMMENT'],count);
-          break;
-        case 'ADD_LABEL':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_LABEL'],count);
-          break;
-        case 'ADD_HIDDEN':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_HIDDEN'],count);
-          break;
-        case 'ADD_SHOWN':
-          state = Immutable.setIn(state,['Posts',post_i,'stats','ADD_SHOWN'],count);
-          break;
-        default:
-          break;
-      }
-      */
-      break;
-      
-    case 'PAGE_LABELS_CREATE_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Labels = action.response;
       break;
 
-    case 'LABEL_SELECT':
-      if(action.chosen_label_index !== -1){
-        state.Pages.data[action.page_index].chosen_label_index = action.chosen_label_index;
-      }else{
-        state.Pages.data[action.page_index].chosen_label_index = null;
-      }
-      break;  
-
-    case 'POST_COMMENTS_LOAD_MORE_RESPONSE_SUCCESS':
-    case 'POST_COMMENTS_REFRESH_RESPONSE_SUCCESS':
-
-      if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
-          state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0 &&
-          action.type == 'POST_COMMENTS_LOAD_MORE_RESPONSE_SUCCESS')
-      {
-        state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.concat(action.response.data);
-        state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.paging = action.response.paging;
-      }else{
-        state.Pages.data[action.page_index].Posts.data[action.post_index].Comments = action.response;
-      }
-
-      var Post = state.Pages.data[action.page_index].Posts.data[action.post_index];
-      var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
-      Post.comment_count_not_yet_pm = 0;
-      Post.comment_last_refresh_time = moment();
-      Comments.map((Comment,index)=>{
-        Comment.can_reply_privately ? Post.comment_count_not_yet_pm += 1 : null;
-      });
-      break;
-
-    case 'PRIVATE_REPLY_BULK_REPLACE':
-      if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
-          state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0){
-        var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
-        Comments.map((Comment,index)=>{
-          Comment.private_reply = action.private_reply;
-        });
-      }
-      break;
-
-    case 'COMMENT_REPLY_BULK_REPLACE':
-      if( state.Pages.data[action.page_index].Posts.data[action.post_index].Comments && 
-          state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data.length>0){
-        var Comments = state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data;
-        Comments.map((Comment,index)=>{
-          Comment.comment_reply = action.comment_reply;
-        });
-      }
-      break;
-
-    case 'PRIVATE_REPLY_CHANGE':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].private_reply = action.private_reply;
-      break;
-
-    case 'COMMENT_REPLY_CHANGE':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].comment_reply = action.comment_reply;
-      break;
-
-    case 'PRIVATE_REPLY_SUBMIT':
-      var pa_i = action.page_index;
-      var po_i = action.post_index;
-      var c_i = action.comment_index;
-      var page_id = state.Pages.data[pa_i].id;
-      var post_id = state.Pages.data[pa_i].Posts.data[po_i].id;
-      var comment_id = state.Pages.data[pa_i].Posts.data[po_i].Comments.data[c_i].id;
-      
-      var page_access_token = state.Pages.data[pa_i].access_token;
-      var private_reply = action.private_reply;
-
-      if(private_reply.length >= 2){
-        FB.api(
-          '/'+comment_id+'/private_replies?access_token='+page_access_token+'&message='+private_reply,
-          'POST',
-          function(response){
-            console.log(response);
-            if(response.id){
-              var m_mid = response.id;
-
-              function json(response) {//json
-                return response.json()  
-              }
-
-              function getTMIDByCommentId(PAGE_ACCESS_TOKEN,comment_id){
-                return fetch('https://graph.facebook.com/v2.8/'+comment_id+'?access_token='+PAGE_ACCESS_TOKEN+'&fields=private_reply_conversation',{
-                  method:'GET',
-                  headers:{"Content-Type": "application/x-www-form-urlencoded"}
-                }).then(status)
-                .then(json);
-              }//testtest
-
-              function sendPrivateReplyDetailToServer(pid,t_mid,m_mid,comment_id){
-                return fetch(settings.base_dir+'/msg/pm?pid='+pid+'&t_mid='+t_mid+'&m_mid='+m_mid+'&comment_id='+comment_id,{
-                  method:'POST',
-                  headers:{"Content-Type": "application/x-www-form-urlencoded"}
-                }).then(status)
-                .then(json);
-              }
-
-              getTMIDByCommentId(page_access_token,comment_id)
-              .then(function(response){
-                if(response.private_reply_conversation){
-                  var t_mid = response.private_reply_conversation.id;
-                  return sendPrivateReplyDetailToServer(page_id,t_mid,m_mid,comment_id);
-                }else{
-                  alert('ERROR in getTMIDByCommentId');
-                }
-              }).then(function(response){
-                console.log(response);
-              });
-
-              rstore.dispatch({
-                type:'PRIVATE_REPLY_SUBMIT_RESPONSE_SUCCESS',
-                page_index:pa_i,
-                post_index:po_i,
-                comment_index:c_i,
-                page_id:page_id,
-                private_reply:private_reply
-              });
-              rerender();
-            }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-              gsetUserLoginAndPage();
-            }else if(response.error){
-              alert(response.error.message);
-              sy.error_log.push(response);
-            }else{
-              sy.error_log.push(response);
-            }
-        });
-      }else{
-        alert('Please input a longer message before sending...');
-      }
-      break;
-
-    case 'PRIVATE_REPLY_SUBMIT_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].can_reply_privately = false;
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Conversation = {data:[{message:action.private_reply,from:{id:action.page_id}}]};
-      break;
-
-    case 'COMMENT_REPLY_SUBMIT_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].comment_count += 1;
-      break;
-
-    case 'COMMENT_TOGGLE_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].is_hidden = action.is_hidden;
-      break;
-
-    case 'COMMENT_GET_COMMENT_REPLY':
-      var pa_i = action.page_index;
-      var po_i = action.post_index;
-      var c_i = action.comment_index;
-      var comment_id = state.Pages.data[pa_i].Posts.data[po_i].Comments.data[c_i].id;
-      var page_access_token = state.Pages.data[pa_i].access_token;
-      FB.api(
-        '/'+comment_id+'/comments?access_token='+page_access_token+'&fields=message',
-        'GET',
-        function(response){
-          if(response.data && response.data.length >= 0){
-            rstore.dispatch({
-              type:'COMMENT_GET_COMMENT_REPLY_RESPONSE_SUCCESS',
-              page_index:pa_i,
-              post_index:po_i,
-              comment_index:c_i,
-              response:response
-            });
-            rerender();
-          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-            gsetUserLoginAndPage();
-          }else if(response.error){
-            alert(response.error.message);
-            sy.error_log.push(response);
-          }else{
-            sy.error_log.push(response);
-          }
-      });
-      break;
-
-    case 'COMMENT_GET_COMMENT_REPLY_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Comments = action.response;
-      break;
-
-    case 'GET_CONVERSATION_MESSAGES':
-      var pa_i = action.page_index;
-      var po_i = action.post_index;
-      var c_i = action.comment_index;
-      var conversation_id = state.Pages.data[pa_i].Posts.data[po_i].Comments.data[c_i].private_reply_conversation.id;
-      var page_access_token = state.Pages.data[pa_i].access_token;
-      FB.api(
-        '/'+conversation_id+'/messages?access_token='+page_access_token+'&fields=message,to,from,created_time',
-        'GET',
-        function(response){
-          if(response.data && response.data.length >= 0){
-            rstore.dispatch({
-              type:'GET_CONVERSATION_MESSAGES_RESPONSE_SUCCESS',
-              page_index:pa_i,
-              post_index:po_i,
-              comment_index:c_i,
-              response:response
-            });
-            rerender();
-          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-            gsetUserLoginAndPage();
-          }else if(response.error){
-            alert(response.error.message);
-            sy.error_log.push(response);
-          }else{
-            sy.error_log.push(response);
-          }
-      });
-      break;
-
-    case 'GET_CONVERSATION_MESSAGES_RESPONSE_SUCCESS':
-      state.Pages.data[action.page_index].Posts.data[action.post_index].Comments.data[action.comment_index].Conversation = action.response;
-      break;
-
-    case 'MESSAGE_SEND':
-      var pa_i = action.page_index;
-      var po_i = action.post_index;
-      var c_i = action.comment_index;
-      var conversation_id = state.Pages.data[pa_i].Posts.data[po_i].Comments.data[c_i].private_reply_conversation.id;
-      var page_access_token = state.Pages.data[pa_i].access_token;
-      FB.api(
-        '/'+conversation_id+'/messages?access_token='+page_access_token+'&message='+action.message+'&fields=created_time,from,message',
-        'POST',
-        function(response){
-          if(response.id){
-            rstore.dispatch({
-              type:'GET_CONVERSATION_MESSAGES',
-              page_index:pa_i,
-              post_index:po_i,
-              comment_index:c_i,
-              conversation_id:conversation_id
-            });
-            rerender();
-          }else if(response.error && response.error.code === 190 && response.error.error_subcode === 463){
-            gsetUserLoginAndPage();
-          }else if(response.error){
-            alert(response.error.message);
-            sy.error_log.push(response);
-          }else{
-            sy.error_log.push(response);
-          }
-      });
-      break;
-
-    case 'MESSAGE_SEND_RESPONSE_SUCCESS':
-      break;
-
-    case 'AUTO_REFRESH_STRING_CHANGE':
-      state.auto_refresh_string = action.auto_refresh_string;
-      break;
-
-    case 'AUTO_REFRESH_QUEUE_SHIFT':
-      state.auto_refresh_queue.shift();
-      break;
-
-    case 'AUTO_REFRESH_TOGGLE':
-      state.auto_refresh_is_on = !state.auto_refresh_is_on;
-      break;
-
-    case 'AUTO_REFRESH_QUEUE_INIT':
-      state.auto_refresh_queue = [];
-      var repeat = state.auto_refresh_repeat;
-      Array(repeat).fill().map((x,i)=>{
-        state.auto_refresh_queue = state.auto_refresh_queue.concat(state.auto_refresh_list);
-      })
-      break;
-
-    case 'AUTO_REFRESH_REPEAT_CHANGE':
-      state.auto_refresh_repeat = action.auto_refresh_repeat;
-      break;
-
-    case 'AUTO_REFRESH_INTERVAL_CHANGE':
-      state.auto_refresh_interval = action.auto_refresh_interval;
-      break;
-
-    case 'GET_COMMENT_COUNTS_RESPONSE_SUCCESS':
-      state.CommentCounts = action.CommentCounts;
-      break;
-
-    case 'GET_COMMENT_COUNTS_V2_RESPONSE_SUCCESS':
-      var page_index = action.page_index;
-      var post_index = action.post_index;
-      var Post = state.Pages.data[page_index].Posts.data[post_index];
-      var post_id = Post.id;
-      var page_id = Post.id.split('_')[0];
-      Post.CommentCounts = action.CommentCounts;
+    case 'GET_COMMENT_COUNTS':
+      state = Immutable.setIn(state,['CommentCountss'],action.CommentCountss); 
       break;
 
     default:
@@ -456,6 +127,12 @@ class AutoPMApp extends Component{
         </Col>
         <Col md={8}>
           <AutoPMStats Posts={this.props.state.Posts}/>
+        </Col>
+        <Col md={2}>
+        { this.props.state.CommentCountss && this.props.state.CommentCountss.length>=1
+          ? <PostsCommentsHistory CommentCountss={this.props.state.CommentCountss} />
+          : null
+        }
         </Col>
         </Row>
       </section>
@@ -514,6 +191,14 @@ class AutoPMSetup extends Component{
           that.autobot_started = false;
           return true;
         }
+      }).catch(function(err){
+        if(err instanceof Error && err.message === 'ErrorFacebookTokenExpired'){
+          return gsetUserLoginAndPage()
+          .then(function(success){
+            PAGE_ACCESS_TOKEN = rstore.getState().Pages[page_i].access_token;
+            return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
+          });
+        }
       });
     }
 
@@ -533,11 +218,56 @@ class AutoPMSetup extends Component{
         Posts: responses
       });
       rerender();
+
       return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config.timings,post_configs);
     }).then(function(success){
       console.log('STOPPED AUTO REPLYING');
     })
   }
+
+  handleGetCommentCount = (event) => {
+    var config = configFillDefaults(JSON.parse(this.state.config));
+    var post_configs = postConfigFillDefaults(config.post_configs,config.default_config);
+    var post_ids = post_configs.map((post_config)=>(post_config.post_id));
+    var post_names = post_configs.map((post_config)=>(post_config.name));
+
+    var pid = post_ids[0].split('_')[0];
+    var page_i = rstore.getState().Pages.findIndex((Page)=>(Page.id === pid));
+    var PAGE_ACCESS_TOKEN = rstore.getState().Pages[page_i].access_token;
+
+    Promise.mapSeries(post_ids,function(post_id,i){
+
+      var limit = 100;
+      var uri = 'https://graph.facebook.com/v2.8/'+post_id+'/comments';
+      var qparams = {
+        access_token: PAGE_ACCESS_TOKEN,
+        limit: limit,
+        order: 'reverse_chronological',
+        fields: 'id,message,created_time,from'
+      };
+
+      var options = {max_rows:1000,matchFunc:(x,i)=>{
+        return moment(x.created_time).diff(moment().subtract(7,'d'),'days') < 0;
+      }};
+
+      return fbRequestIterator(PAGE_ACCESS_TOKEN,uri,qparams,options)
+      .then(function(data){
+        var CommentCounts = countComment(data);
+        CommentCounts.sort(dateCompare);
+        CommentCounts.pop();
+        return {post_id:post_id,post_name:post_names[i],CommentCounts:CommentCounts};
+      });
+
+    }).then(function(CommentCountss){
+      console.log(CommentCountss);
+      rstore.dispatch({
+        type:'GET_COMMENT_COUNTS',
+        CommentCountss:CommentCountss
+      });
+      rerender();
+    });
+  }
+
 
   handleFBLogin = (event) => {
     gsetUserLoginAndPage();
@@ -559,6 +289,7 @@ class AutoPMSetup extends Component{
         }
         <div><span>CONFIG:</span><textarea className="form-control" value={this.state.config ? this.state.config : ''} onChange={this.handleConfigChange}/></div>
         <button className="btn btn-primary" onClick={this.handleStart}>{this.state.started ? 'STOP' : 'START'}</button>
+        <button className="btn btn-info" onClick={this.handleGetCommentCount}>COUNT COMMENTS</button>
         <h4>{this.state.last_refresh_time ? 'REFRESH AT:'+moment(this.state.last_refresh_time).format('HH:mm:ss') : null}</h4>
       </section>
     );
@@ -707,8 +438,33 @@ class PostsCommentsHistory extends Component{
   }
 
   render(){
+    var last_7 = [];
+    (()=>{
+      var day_today = moment().format('DD');
+      for(var i=0;i<7;i++){
+        last_7[i] = parseInt(day_today,10)-i;
+      }
+    })();
+
     return(
-      
+      <table className="table table-bordered PostCommentsHistory">
+      <tbody>
+        {this.props.CommentCountss.map((CommentCounts)=>(
+          <tr key={'CommentCountss_'+CommentCounts.post_id}>
+            <td key={'CommentCountss_td_'+CommentCounts.post_id}>{CommentCounts.post_name ? CommentCounts.post_name : CommentCounts.post_id}</td>
+            {last_7.map((day)=>{
+              var count = 0;
+              CommentCounts.CommentCounts.map((CommentCount)=>{
+                if(parseInt(CommentCount.date.substring(8,10),10) === day){
+                  count = CommentCount.count;
+                }
+              });
+              return <td key={'CommentCountss_td_'+CommentCounts.post_id+'_'+day}>{count}</td>
+            })}
+          </tr>
+        ))}
+      </tbody>
+      </table>
     );
   }
 }
@@ -820,11 +576,11 @@ function getFBPosts(PAGE_ACCESS_TOKEN,post_ids){
   });
 }
 
-function getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids){
+function getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids,limit=25){
   var batch = [];
 
   var qparams = {
-    limit:25,
+    limit:limit,
     order:'reverse_chronological',
     fields:'id,message,from,created_time,can_reply_privately,private_reply_conversation,can_like,can_hide,comment_count,attachment,is_hidden,is_private'
   }
@@ -1004,20 +760,20 @@ function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
       batched_responses.map((batched_response,i)=>{
         responses = responses.concat(batched_response);
       });
+
+      responses.map((response,i)=>{
+        if(response.code === 200 && response.body){
+          parsed_responses[i] = JSON.parse(response.body);
+        }else if(response.code && response.code !== 200 && response.body){
+          parsed_responses[i] = JSON.parse(response.body);
+          console.log(parsed_responses[i]);
+        }else{
+          throw new Error(JSON.stringify(response));
+        }
+      })
+
+      return parsed_responses;
     }
-
-    responses.map((response,i)=>{
-      if(response.code === 200 && response.body){
-        parsed_responses[i] = JSON.parse(response.body);
-      }else if(response.code && response.code !== 200 && response.body){
-        parsed_responses[i] = JSON.parse(response.body);
-        console.log(parsed_responses[i]);
-      }else{
-        throw new Error(JSON.stringify(response));
-      }
-    })
-
-    return parsed_responses;
   });
 }
 
@@ -1138,6 +894,7 @@ function parseARString (str) {
 function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
   var post_ids = post_configs.map((post_config)=>(post_config.post_id));
   var message_interval = timings.message_interval;
+  var get_comment_limit = timings.get_comment_limit;
 
   var do_hides = [];
   var do_hide_ids = [];
@@ -1150,7 +907,7 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
   
   var r = {};
 
-  return getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids)
+  return getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids,get_comment_limit)
   .then(function(responses){
     console.log('getFBPostsComments');
     console.log(responses);
@@ -1232,13 +989,6 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
     console.log('postFBLabels');
     console.log(response);
     return r.comments; //FINAL RETURN VALUE
-  }).catch(function(err){
-    if(err instanceof Error && err.message === 'ErrorFacebookTokenExpired'){
-      return gsetUserLoginAndPage()
-      .then(function(success){
-        return getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
-      });
-    }
   });
 }
 
@@ -1288,17 +1038,28 @@ function postConfigFillDefaults(post_configs,default_config){
 } 
 
 function recordStatistics(post_id,stat_type){
-  if(typeof window.autopm_stats === 'undefined'){
-    window.autopm_stats = [];
-  }
-  window.autopm_stats.push(post_id+' - '+stat_type);
-
   rstore.dispatch({
     type:'RECORD_STATISTICS',
     post_id:post_id,
     stat_type:stat_type
   });
-  //console.log('$$$ OK IT DOES NOT EVEN FINISH THE DISPATCH');
-  //rerender();
-  //console.log('$$$ OK IT DOES NOT EVEN FINISH THE RENDER');
 }
+
+function checkSchedule(schedule,current_moment){
+  var mode = 'DEFAULT';
+  if(schedule && schedule.length>=1){
+    schedule.map((shift)=>{
+      if(shift.end_time <= shift.start_time){
+        alert('END TIME <= START TIME');
+      }else{
+        var current_time = current_moment.format('HH:mm:ss');
+        if(current_time >= shift.start_time && current_time <= shift.end_time){
+          mode = shift.mode;
+        }
+      }
+    });
+  }
+  return mode; 
+}
+
+window.error_log = [];
