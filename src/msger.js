@@ -11,8 +11,8 @@ import ReactDatetime from 'react-datetime';
 import ReactSelect from 'react-select';
 import {randomString} from './Utils/Helper';
 
-var console = {};
-console.log = function(){};
+//var console = {};
+//console.log = function(){};
 
 const BASEDIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
 const initial_state = Immutable({
@@ -939,7 +939,7 @@ class ConvLoadFilter extends Component{
           <input type="text" className="form-control input-sm" style={{width:'50px'}} defaultValue={1} ref={(input)=>{this.TextInputMore = input}} />
           <span className="input-group-btn">
             <button className="btn btn-sm btn-default" onClick={this.handleRefreshConversations}>R</button>
-            <button className="btn btn-sm btn-default" type="button" onClick={this.handleSyncLabels}>L</button>
+            <button className="btn btn-sm btn-default" type="button" disabled={true} onClick={this.handleSyncLabels}>L</button>
             <button className="btn btn-sm btn-default" type="button" onClick={this.handleSyncConversations}>C</button>
           </span>
         </div>
@@ -1010,7 +1010,13 @@ class Modal extends Component{
 class UploadManager extends Component{
   constructor(props) {
     super(props);
-    this.state = {highlights:[],search_text:'',Uploads:props.Uploads,selected_tag_ids:[]};
+    this.state = {
+      highlights:[],
+      search_text:'',
+      Uploads:props.Uploads,
+      selected_tag_ids:[],
+      select_to_send:true
+    };
   }
 
   componentWillReceiveProps(nextProps) {
@@ -1089,27 +1095,29 @@ class UploadManager extends Component{
     console.log('$$$ HIGHLIGHT');
     console.log(highlights);
     var attachment_id_selected = event.target.attributes.getNamedItem('data-attachment-id').value;
-    var index = highlights.indexOf(attachment_id_selected);
-    if(index === -1){
-      highlights.push(attachment_id_selected);
+    if(this.state.select_to_send === false){
+      var index = highlights.indexOf(attachment_id_selected);
+      if(index === -1){
+        highlights.push(attachment_id_selected);
+      }else{
+        highlights.splice(index, 1);
+      }
+      this.setState({highlights:highlights});
+      console.log(attachment_id_selected);
+      console.log(highlights);
     }else{
-      highlights.splice(index, 1);
+      this.sendAttachments([attachment_id_selected]);    
     }
-    this.setState({highlights:highlights});
-    console.log(attachment_id_selected);
-    console.log(highlights);
   }
 
   handleSend = (event) =>{
-    console.log('HANDLE SEND');
+    this.sendAttachments(this.state.highlights);  
+  }
+
+  sendAttachments(attachment_ids){
     var pid = this.props.pid;
     var t_mid = this.props.t_mid;
     var cman_i = this.props.cman_i;
-    var attachment_ids = this.state.highlights;
-
-    //var Uploads = this.props.Uploads;
-    //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
-    //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
     sendMessage(pid,cman_i,t_mid,null,attachment_ids);
     this.setState({highlights:[],search_text:''});    
   }
@@ -1126,6 +1134,10 @@ class UploadManager extends Component{
     var selected_tag_ids = all_selected_options.map((option)=>(option.value));
     console.log(selected_tag_ids);
     this.setState({selected_tag_ids:selected_tag_ids});
+  }
+
+  handleToggleSelectToSend = (event) =>{
+    this.setState({select_to_send:!this.state.select_to_send});
   }
 
   render(){
@@ -1162,13 +1174,20 @@ class UploadManager extends Component{
                 }
               >
                 <div key={'upload_id_'+Upload.upload_id} className={"thumbnail_box"+(this.state.highlights.indexOf(Upload.attachment_id) !== -1 ? ' active' : '') }>
-                  <img className="upload_image_thumbnail" src={BASEDIR+'/msg/media/'+Upload.filename} data-attachment-id={Upload.attachment_id} onClick={this.handleHighlight}/>
+                  <img 
+                    className="upload_image_thumbnail" 
+                    src={BASEDIR+'/msg/media/'+Upload.filename} 
+                    data-attachment-id={Upload.attachment_id}
+                    onClick={this.handleHighlight}
+                    data-dismiss={this.state.select_to_send ? 'modal' : false}
+                  />
                 </div>
               </OverlayTrigger>
             ))}
           </section>
 
           <button className="btn btn-warning" onClick={this.handleDelete}>DELETE</button>
+          <button className={'btn btn-default'+(this.state.select_to_send ? ' active' : '')} onClick={this.handleToggleSelectToSend}>SELECT TO SEND</button>
 
           <Row>
           <Col md={6}>
@@ -1477,7 +1496,7 @@ class ConversationCard extends Component{
     return(
       <section 
         className={ "ConversationCard"
-                    +(this.props.Conversation.customer_replied === 1 && this.props.Conversation.unread_count > 0/*(this.props.Conversation.unread_count > 0 && !this.props.Conversation.messages) || (this.props.Conversation.unread_count > 0 && this.props.Conversation.messages && this.props.Conversation.messages.data.length>=1 && (this.props.Conversation.messages.data[0].uid_from !== this.props.pid))*/ ? ' unread' : '')
+                    +(this.props.Conversation.customer_replied === 1 /*(this.props.Conversation.unread_count > 0 && !this.props.Conversation.messages) || (this.props.Conversation.unread_count > 0 && this.props.Conversation.messages && this.props.Conversation.messages.data.length>=1 && (this.props.Conversation.messages.data[0].uid_from !== this.props.pid))*/ ? ' unread' : '')
                     +(this.props.Conversation.queued_message ? ' alert-warning' : '')
                     +(this.props.Conversation.sent_message ? ' alert-success' : '')
                     +(this.props.ConversationC && this.props.Conversation.t_mid === this.props.ConversationC.t_mid ? ' active' : '')
@@ -2454,6 +2473,7 @@ function syncLabels(pid){
     console.log(data);
   }
 }
+window.syncLabels = syncLabels;
 
 function syncConversations(pid,last_message_date=undefined){
   if (connected) {
@@ -2565,7 +2585,7 @@ function filterConversations(Conversations,filter){
   if(filter.inbox && filter.inbox === 'UNREAD'){
     Conversations = Conversations.filter((Conversation,i)=>{
       //if( (Conversation.unread_count > 0 && !Conversation.messages) || (Conversation.unread_count > 0 && Conversation.messages && Conversation.messages.data.length>=1 && (Conversation.messages.data[0].uid_from !== Conversation.pid)) ){
-      if(Conversation.customer_replied === 1 && Conversation.unread_count > 0){
+      if(Conversation.customer_replied === 1){
         return true;
       }
       return false;
