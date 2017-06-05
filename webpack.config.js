@@ -8,9 +8,12 @@ module.exports = {
         onsen:'./src/onsen.js',
         fastpage:'./src/fastpage.js',
         privatereply:'./src/privatereply',
+        privatereply2:'./src/privatereply2',
+        autopm:'./src/autopm',
         login:'./src/login',
         bulk_immutable:'./src/bulk_immutable',
         msger:'./src/msger',
+        msger2:'./src/msger2',
         getlongtoken:'./src/getlongtoken'
     },
     output: {

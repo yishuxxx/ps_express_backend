@@ -14,9 +14,12 @@ import ReactDatetime from 'react-datetime';
 import ReactSelect from 'react-select';
 import {randomString} from './Utils/Helper';
 
+const BASEDIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
+const APP_ID = settings.fb.app_id;
+
 window.fbAsyncInit = function() {
   FB.init({
-    appId      : settings.fb.app_id,
+    appId      : APP_ID,
     xfbml      : false,
     version    : 'v2.8'
   });
@@ -125,6 +128,9 @@ class AppData{
           var conv_i = Page.Conversations.data.findIndex(x => x.id === action.t_mid);
           //var Conversation_P = Page.Conversations.data[conv_i];
           const Conversation = state.Conversations.data[conv_i];
+          state = Immutable.setIn(state, ["ConversationC"], Conversation);
+          state = Immutable.setIn(state, ["t_mid_current"], Conversation.id);  
+          
           var url = '/'+action.t_mid+'/messages?access_token='+Page.access_token+'&fields=message,id,created_time,from&limit=100';
           FB.api(url,function(response){
             if(response.data){
@@ -263,7 +269,7 @@ class AppData{
   }
 
   SEND_MESSAGE_TO_SERVER(){
-    fetch(settings.base_url+'',{
+    fetch(BASEDIR+'',{
       method: 'POST',
       headers:{'Content-Type': 'application/json'},
       body: JSON.stringify(messageData)
@@ -380,6 +386,7 @@ class ConversationCard extends Component{
       type:'GET/<CONVERSATION_ID>/messages',
       t_mid:this.props.Conversation.id
     });
+    rerender();
   }
 
   render(){
@@ -1185,27 +1192,6 @@ class MessengerApp extends Component{
 
         </Row>
 
-        <Row>
-
-          <Col md={3}>
-            {
-              this.props.state.Conversations && this.props.state.Conversations.data.length >= 1 && this.props.state.pid_current
-              ? <ConversationManager
-                  Page={this.props.state.Pages.data[this.props.state.Pages.data.findIndex(x => x.id === this.props.state.pid_current)]} 
-                  Conversations={this.props.state.Conversations} 
-                  ConversationC={this.props.state.ConversationC}
-                />
-              : null
-            }
-
-          </Col>
-
-          <Col md={3}>
-            <ChatManager Messages={this.props.state.Messages ? this.props.state.Messages : null}/>
-          </Col>
-
-        </Row>
-
       </section>
     );
   }
@@ -1217,7 +1203,7 @@ var rerender = function(){
 }
 window.rerender  = rerender;
 
-var socket = io();
+var socket = io({transports: ['polling'], upgrade: false, path: BASEDIR+'/socket.io'});
 var connected = true;
 
 // Whenever the server emits 'login', log the login message

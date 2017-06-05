@@ -1,5 +1,6 @@
 var settings = {
 	//base_dir:'/api'+((parseInt((process.env.PORT ? process.env.PORT : 3000),10)-3000) ? (parseInt((process.env.PORT ? process.env.PORT : 3000),10)-3000) : ''),		// /api
+	SERVER_URL:'https://www.sy.com.my',
 	base_dir:(process.env.BASE_DIR ? process.env.BASE_DIR : '/api'),
 	db_host:'localhost',	//localhost
 	db_name:'sycommy_shop', //sycommy_shop
@@ -15,6 +16,12 @@ var settings = {
 }
 
 module.exports.settings = settings;
+//daigou
+//-MAINAPP/EAAIrVrgXUscBAHNRh9lOJCRWXkZCpJsoP8m1EBxVqZA8ZAc96LdYn3y5Xn9AQ6QgCN5IM5wjwtpZAFZBMOYxUw3rdSZBfp9qoQZAj0lcCI7TwxDyFfYUiedkcElCaPO8IGZBOCZBpGYAFisskiAEE9nsQkeoRMnqTjdzupZCCMM8Y4rQZDZD
+//-TESTAPP/EAAIrWVlswogBADzmkKyItbSX4WsQQZBhVcHXcocwCapgLZAZCIAm6jlTcJE3Ay0cVBxpjZAs2CMfWf1mMcgXRfxrUaN8ai5JYz6VKU769qZBnS5SLZBNUki31bm2rxWZBOfZCGUT6UPXZBZAEULve2U67n4vbbt5E4kEw3P6kT0mx27gZDZD
+//sy
+//-MAINAPP/EAAIrVrgXUscBAJkgBFbqgDpCK5WnXLZAFlZCnw9EGL1N9JX7lNqLXg2LkXR3kpBDg2XDIZCxWLBDiLpxsqcY249mZCw8cAKSHrA0YYOJOuZCbLKtCOpoXG31NlDyK00QJUqUZBXd4ZCoOZA1ZBl6gb01sfPLgamVsMPaWGrl7Re91tAZDZD
+//-TESTAPP/EAAIrWVlswogBAADr44gqWln13t7UWeThlkRtvHaZCl5KO7H8K9f4ZBAykQVsZCinvdKZCxm0yqpkJf7tM77qud4sk3WlZBjLrQySBIzkDaZBWh30tpnmyskZCKGgUYFa52ZAFhHFUC3oedZAy12ItVU4WMxS4IZBVeYlIeHf38YPIN9wZDZD
 /*
 var settings = {
 	base_dir:'',		// /api
