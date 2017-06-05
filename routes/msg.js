@@ -56,6 +56,11 @@ let FBXTag = FBXTagFunc(Sequelize, sequelize);
 let {FBXUploadTagFunc} = require('../src/models/FBXUploadTag');
 let FBXUploadTag = FBXUploadTagFunc(Sequelize, sequelize);
 
+let {ProductFunc} = require('../src/models/product');
+let Product = ProductFunc(Sequelize, sequelize);
+let {FBConversationProductFunc} = require('../src/models/FBConversationProduct');
+let FBConversationProduct = FBConversationProductFunc(Sequelize, sequelize);
+
 
 FBConversation.hasMany(FBMessage, {foreignKey:'t_mid'});
 FBMessage.belongsTo(FBConversation, {foreignKey:'t_mid'});
@@ -70,6 +75,9 @@ FBAttachment.belongsToMany(FBMessage, {through:FBMessageAttachment, foreignKey:'
 
 FBUpload.belongsToMany(FBXTag, {through:FBXUploadTag, foreignKey:'upload_id', otherKey:'tag_id'});
 FBXTag.belongsToMany(FBUpload, {through:FBXUploadTag, foreignKey:'tag_id', otherKey:'upload_id'});
+
+FBConversation.belongsToMany(Product, {through:FBConversationProduct, foreignKey:'t_mid', otherKey: 'id_product'});
+Product.belongsToMany(FBConversation, {through:FBConversationProduct, foreignKey:'id_product', otherKey: 't_mid'});
 
 let PAGE_ACCESS_TOKEN_LONG;
 let PAGE_ACCESS_TOKEN_MESSENGER;
@@ -196,15 +204,82 @@ io.on('connection', function(socket) {
 		READINGS.push(read);
 		socket.broadcast.emit('ADD_READING',read);
 	});
-/*
+
+	/*
 	socket.on('DELETE_READINGS',function(data) {
 		var read = {t_mid:data.t_mid,id_employee:data.id_employee,socket_id:socket.id};
 		READINGS = deleteReadings(READINGS,read.id_employee,read.socket_id,read.t_mid);
 		socket.broadcast.emit('DELETE_READINGS',read);
 	});
-*/
+	*/
+
+	socket.on('CONVERSATION_PRODUCT', function(data) {
+		console.log('======================== socket.on(CONVERSATION_PRODUCT) =========================');
+
+		var q = {
+			crud:data.crud,
+			pid:data.pid,
+			t_mid:data.t_mid,
+			id_product:data.id_product
+		};
+		var r = {};
+		console.log(q);
+
+		new Sequelize.Promise(function(resolve,reject){
+			if(q.crud === 'CREATE'){
+				resolve(createConversationProduct(q.t_mid,q.id_product,undefined,undefined,socket.request.user.id_employee));
+			}else if(q.crud === 'DELETE'){
+				resolve(deleteConversationProduct(q.t_mid,q.id_product));
+			}else{
+				throw new Error('Invalid Parameter, q.crud does not exist');
+			}
+		}).then(function(Instance){
+			if(Instance){
+				return findOneConversation(q.t_mid);
+			}else{
+				throw new SequelizeNoResultError('createConversationProduct');
+			}
+		}).then(function(Instance){
+			if(Instance){
+				r.FBConversation = Instance;
+				io.local.emit('NEW_MESSAGE',{
+					pid:q.pid,
+					t_mid:q.t_mid,
+					Conversation:r.FBConversation
+				});
+			}else{
+				throw new SequelizeNoResultError('FBConversationProduct.findAll');
+			}
+		}).catch(function(err){
+			if(err instanceof Error){
+				winston.error(err.name,err);
+				io.local.emit('CONVERSATION_PRODUCT',{
+					error:err.name,
+					message:err.message
+				});
+			}else{
+				throw err;
+			}
+		});
+	});
+
+	socket.on('GET_PRODUCTS', function(data) {
+		var r = {};
+		findAllProduct()
+		.then(function(Instances){
+			if(Instances){
+				r.Products = Instances;
+				socket.emit('GET_PRODUCTS',{
+					Products:r.Products
+				});
+			}else{
+				throw new SequelizeNoResultError('findAllProduct');
+			}
+		});
+	});
+
 	socket.on('UPDATE_CONVERSATION_LABELS', function(data) {
-		console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) START =========================');
+		console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) =========================');
 
 		var r = {
 			pid:data.pid,
@@ -442,7 +517,8 @@ io.on('connection', function(socket) {
 						snippet:	Conversation.snippet,
 						message_count: Conversation.message_count,
 						unread_count: Conversation.unread_count,
-						customer_replied:Conversation.messages.data[0].from.id === Conversation.participants.data[0].id
+						customer_replied:Conversation.messages.data[0].from.id === Conversation.participants.data[0].id,
+						customer_replied_time:(Conversation.messages.data[0].from.id === Conversation.participants.data[0].id ? Conversation.updated_time : undefined)
 					}, {
 						where: {
 							t_mid: Conversation.id,
@@ -558,7 +634,10 @@ io.on('connection', function(socket) {
 					where:where,
 					include:[{
 						model:FBLabel
-					},/*,{
+					},{
+						model:Product,
+						attributes:['id_product','reference']
+					}/*,{
 						model:FBMessage,
 						include:[{
 							model:FBAttachment
@@ -793,6 +872,7 @@ io.on('connection', function(socket) {
 						},
 					};
 					break;
+
 				case 'image':
 					//var url = settings.SERVER_URL + settings.base_dir+"/msg/media/"+r.filenames[0];
 					message_data = {
@@ -810,6 +890,48 @@ io.on('connection', function(socket) {
 						},
 					};
 					break;
+
+				case 'generic_template':
+					message_data = {
+						recipient: {
+							id: r.psid,
+						},
+						message:{
+						    attachment:{
+						      type:"template",
+						      payload:{
+						        template_type:"generic",
+						        elements:[
+						           {
+						            title:"Welcome to Peter\'s Hats",
+						            image_url:"https://www.sy.com.my/shop/234-thickbox_default/6-port-usb-charger-with-current-measurement.jpg",
+						            subtitle:"We\'ve got the right hat for everyone.",
+						            default_action: {
+						              type: "web_url",
+						              url: "https://www.sy.com.my/shop/en/electronics/49-6-port-usb-charger-with-current-measurement.html",
+						              messenger_extensions: true,
+						              webview_height_ratio: "tall",
+						              fallback_url: "https://www.sy.com.my/shop"
+						            },
+						            buttons:[
+						              {
+						                type:"web_url",
+						                url:"https://www.sy.com.my/shop",
+						                title:"View Website"
+						              },{
+						                type:"postback",
+						                title:"Start Chatting",
+						                payload:"DEVELOPER_DEFINED_PAYLOAD"
+						              }              
+						            ]      
+						          }
+						        ]
+						      }
+						    }
+					  	}
+					};
+					break;
+
 				case 'read receipt':
 					message_data = sendReadReceipt(r.psid);
 					break;
@@ -1455,35 +1577,56 @@ router.get('/authorize', function(req, res) {
 	});
 });
 
-router.post('/pm', function(req, res) {
-	res.send({success:true});
-	/*	
+router.post('/autopmpm', function(req, res) {
+	console.log('======================== AUTOPM x (N)  =========================');
 	var pid = req.query.pid;
-	var t_mid = req.query.t_mid;
-	var m_mid = req.query.m_mid;
-	var comment_id = req.query.comment_id;
+	var pms = req.body;
 	var r = {};
-	
-	if(!(pid && t_mid && m_mid && comment_id)){
-		res.send({success:false});
-		winston.error('RequestQueryParametersInvalidError',{route:'/pm',t_mid:t_mid,m_mid:m_mid,comment_id:comment_id});
-		throw new RequestQueryParametersInvalidError('router.post(/pm)');
-	}
-	console.log('======================== PRIVATE REPLY =========================');
-	getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN_LONG[pid],t_mid,m_mid,null,null)
-	.then(function(result){
-		if(result.FBConversation){
-			r.FBConversation = result.FBConversation;
+	console.log(pms);
+	Sequelize.Promise.mapSeries(pms,(pm,i)=>{
+		console.log(pm);
+		return createConversationProduct(pm.t_mid,(pm.id_product ? pm.id_product : 0),pm.comment_id,pm.post_id,undefined)
+	}).then(function(Instances){
+		if(Instances){
+			var t_mids = pms.map((pm)=>(pm.t_mid));
+			return FBConversation.findAll({
+				where:{t_mid:{$in:t_mids}},
+				include:[{
+					model:FBLabel
+				},{
+					model:Product,
+					attributes:['id_product','reference']
+				}]
+			});
+		}else{
+			throw new SequelizeNoResultError('createConversationProduct');
 		}
-		if(result.FBMessage){
-			r.FBMessage = result.FBMessage;
+	}).then(function(Instances){
+		if(Instances){
+			r.FBConversations = Instances;
+			io.local.emit('GET_CONVERSATIONS', {pid:pid,Conversations:r.FBConversations});
+			res.send({success:true,pms:pms});
+		}else{
+			throw new SequelizeNoResultError('FBConversation.findAll');
 		}
-		res.send({success:true});
-		io.local.emit('NEW_MESSAGE', {Conversation:r.FBConversation,Message:r.FBMessage,pid:pid});
 	}).catch(function(err){
-		throw err;
-	})
-	*/
+		if(err instanceof Error){
+			winston.error(err.name,{error:err,route:'/autopmpm'});
+			res.send({success:false,error:err.name,message:err.message});
+			throw err;
+		}else{
+			winston.error('Error',err);
+			res.send({success:false,error:err});
+		}
+	});
+});
+
+router.get('/products', function(req,res){
+	Product.findAll({
+		attributes:['id_product','reference']
+	}).then(function(Instances){
+		res.send(Instances);
+	});
 });
 
 router.get('/media/:filename',function(req,res){
@@ -1895,6 +2038,17 @@ function callSendAPI(message_data,action_type,conversation_info=undefined) {
 						winston.error('FBGraphAPINoResultError',{message:'Failed to send message with PSID',t_mid:r.t_mid,response:response});
 						throw new FBGraphAPINoResultError('Failed to send message with PSID');
 					}
+				}).catch(function(err){
+					postMessageByTMID(PAGE_ACCESS_TOKEN_LONG[r.pid],r.t_mid,message_data.message.text)
+					.then(function(response){
+						if(response.id){
+							r.m_mid = response.id;
+							resolve('m_mid');
+						}else{
+							winston.error('FBGraphAPINoResultError',{t_mid:r.t_mid});
+							throw new FBGraphAPINoResultError('postMessageByTMID');
+						}
+					});
 				});
 			}else{
 				winston.error('PSIDRequiredError',{t_mid:r.t_mid});
@@ -2166,6 +2320,9 @@ function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
 	});
 }
 
+
+
+
 function findOneMessage(m_mid){
 	return FBMessage.findOne({
 		where:{m_mid:m_mid},
@@ -2322,7 +2479,12 @@ function findOneConversation(t_mid){
 		where:{
 			t_mid:t_mid,
 		},
-		include:[{model:FBLabel}]
+		include:[{
+			model:FBLabel
+		},{
+			model:Product,
+			attributes:['id_product','reference']
+		}]
 	}).then(sequelizeHandler)
 	.catch(sequelizeErrorHandler);
 }
@@ -2347,7 +2509,8 @@ function upsertConversation(Conversation,psid,replied_last_by){
 		unread_count: Conversation.unread_count,
 		replied_last_by:replied_last_by ? replied_last_by : undefined,
 		replied_last_time:replied_last_by ? moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss') : undefined,
-		customer_replied:Conversation.messages.data[0].from.id === Conversation.participants.data[0].id
+		customer_replied:Conversation.messages.data[0].from.id === Conversation.participants.data[0].id,
+		customer_replied_time:(Conversation.messages.data[0].from.id === Conversation.participants.data[0].id ? Conversation.updated_time : undefined)
 	},{
 		where: {
 			t_mid: Conversation.id,
@@ -2370,6 +2533,11 @@ function destroyConversationLabel(t_mid,label_id){
 		force:true
 	}).then(sequelizeHandler)
 	.catch(sequelizeErrorHandler);
+}
+
+function findAllProduct(){
+	return Product.scope('admin').findAll()
+	.then(sequelizeHandler);
 }
 
 function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
@@ -2587,6 +2755,27 @@ function getAndUpsertMessages(PAGE_ACCESS_TOKEN,pid,t_mid,options={}){
 	});
 }
 
+function createConversationProduct(t_mid,id_product,comment_id,post_id,id_employee){
+	console.log('$$$ t_mid_id_product=');
+	console.log(t_mid+'_'+id_product);
+	return FBConversationProduct.create({
+		t_mid_id_product:t_mid+'_'+id_product,
+		t_mid:t_mid,
+		id_product:id_product,
+		comment_id:comment_id ? comment_id : undefined,
+		post_id:post_id ? post_id : undefined,
+		id_employee:id_employee ? id_employee : undefined
+	}).then(sequelizeHandler);
+}
+
+function deleteConversationProduct(t_mid,id_product,id_employee){
+	return FBConversationProduct.destroy({
+		where:{
+			t_mid:t_mid,
+			id_product:id_product
+		}
+	}).then(sequelizeHandler);
+}
 
 function syncLabels(PAGE_ACCESS_TOKEN, pid){
 	var r = {};

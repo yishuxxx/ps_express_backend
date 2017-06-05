@@ -11,6 +11,7 @@ import {randomString} from './Utils/Helper';
 
 const FACEBOOK_URL = settings.fb.base_url;
 const GRAPH_API_URL = settings.fb.graph_api_url;
+const BASE_DIR = (window.location.pathname.match(/^(\/)(\w)+/))[0];
 
 window.fbAsyncInit = function() {
   FB.init({
@@ -29,7 +30,7 @@ window.fbAsyncInit = function() {
   fjs.parentNode.insertBefore(js, fjs);
 }(document, 'script', 'facebook-jssdk'));
 
-var initial_state = Immutable({Pages:[]});
+var initial_state = Immutable({Pages:[],Products:[]});
 
 var reducer = function(state,action=null){
 
@@ -95,6 +96,10 @@ var reducer = function(state,action=null){
       state = Immutable.setIn(state,['CommentCountss'],action.CommentCountss); 
       break;
 
+    case 'GET_PRODUCTS':
+      state = Immutable.setIn(state,['Products'],action.Products);
+      break;
+
     default:
       break;
   }
@@ -143,7 +148,7 @@ class AutoPMApp extends Component{
 class AutoPMSetup extends Component{
   constructor(props,context) {
     super(props,context);
-    this.state = {config:props.config,started:false,last_refresh_time:undefined};
+    this.state = {config:props.config,started:false,last_refresh_time:undefined,counting_comments:false};
     this.started = false;
     this.autobot_started = false;
   }
@@ -156,15 +161,27 @@ class AutoPMSetup extends Component{
     this.setState({started:!this.state.started});
     this.started = !this.started;
     if(this.started === true && this.autobot_started === false){
-      this.state.parsed_config = this.parseConfig(this.state.config);
+      this.startAutoPM(this.state.config);
     }
   }
 
-  parseConfig = (input) =>{
+  startAutoPM = (input) =>{
     var that = this;
     console.log(input);
-    var config = configFillDefaults(JSON.parse(input));
-    var post_configs = postConfigFillDefaults(config.post_configs,config.default_config);
+    var config;
+    var post_configs;
+    try{
+      config = configFillDefaults(JSON.parse(input));
+      config = postConfigFillDefaults(config);
+      post_configs = config.DEFAULT.post_configs;
+    }catch(err){
+      if(err instanceof Error){
+        alert(err.message);
+      }else{
+        alert(err);
+      }
+    };
+
     var post_ids = post_configs.map((post_config)=>(post_config.post_id));
     var pid;
     var page_i;
@@ -173,8 +190,13 @@ class AutoPMSetup extends Component{
     console.log('post_configs');
     console.log(post_configs);
 
-    function loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
-      return getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs)
+    function loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config){
+      var mode = checkSchedule(config.schedule,moment());
+      console.log('MODE='+mode);
+      var general = config[mode].general;
+      var post_configs = config[mode].post_configs;
+
+      return getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs)
       .then(function(comments){
         that.setState({last_refresh_time:moment().format('YYYY-MM-DD HH:mm:ss')});
         rstore.dispatch({
@@ -183,20 +205,29 @@ class AutoPMSetup extends Component{
         });
         rerender();
       }).then(function(success){
-        return setDelay(config.timings.scanning_interval);
+        return setDelay(general.scanning_interval);
       }).then(function(success){
-        if(that.started){
-          return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
-        }else if(that.started === false){
+        if(that.started === false){
+          console.log('HOW DID THAT FUCKER RETURNED EARLY');
           that.autobot_started = false;
           return true;
         }
+        return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config);
       }).catch(function(err){
         if(err instanceof Error && err.message === 'ErrorFacebookTokenExpired'){
           return gsetUserLoginAndPage()
           .then(function(success){
             PAGE_ACCESS_TOKEN = rstore.getState().Pages[page_i].access_token;
-            return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,timings,post_configs);
+            return setDelay(3000)
+            .then(function(success){
+              return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config)
+            });
+          });
+        }else{
+          window.error_log.push(err);
+          return setDelay(3000)
+          .then(function(success){
+            return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config)
           });
         }
       });
@@ -219,15 +250,17 @@ class AutoPMSetup extends Component{
       });
       rerender();
 
-      return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config.timings,post_configs);
+      return loopGetCommentsDoJob(PAGE_ACCESS_TOKEN,config);
     }).then(function(success){
       console.log('STOPPED AUTO REPLYING');
     })
   }
 
   handleGetCommentCount = (event) => {
-    var config = configFillDefaults(JSON.parse(this.state.config));
-    var post_configs = postConfigFillDefaults(config.post_configs,config.default_config);
+    var that = this;
+    var config = JSON.parse(this.state.config);
+
+    var post_configs = config.DEFAULT.post_configs;
     var post_ids = post_configs.map((post_config)=>(post_config.post_id));
     var post_names = post_configs.map((post_config)=>(post_config.name));
 
@@ -236,7 +269,7 @@ class AutoPMSetup extends Component{
     var PAGE_ACCESS_TOKEN = rstore.getState().Pages[page_i].access_token;
 
     Promise.mapSeries(post_ids,function(post_id,i){
-
+      that.setState({counting_comments:true});
       var limit = 100;
       var uri = 'https://graph.facebook.com/v2.8/'+post_id+'/comments';
       var qparams = {
@@ -259,6 +292,7 @@ class AutoPMSetup extends Component{
       });
 
     }).then(function(CommentCountss){
+      that.setState({counting_comments:false});
       console.log(CommentCountss);
       rstore.dispatch({
         type:'GET_COMMENT_COUNTS',
@@ -289,7 +323,7 @@ class AutoPMSetup extends Component{
         }
         <div><span>CONFIG:</span><textarea className="form-control" value={this.state.config ? this.state.config : ''} onChange={this.handleConfigChange}/></div>
         <button className="btn btn-primary" onClick={this.handleStart}>{this.state.started ? 'STOP' : 'START'}</button>
-        <button className="btn btn-info" onClick={this.handleGetCommentCount}>COUNT COMMENTS</button>
+        <button className="btn btn-info" onClick={this.handleGetCommentCount} disabled={this.state.counting_comments}>{this.state.counting_comments ? 'COUNTING...' : 'COUNT COMMENTS'}</button>
         <h4>{this.state.last_refresh_time ? 'REFRESH AT:'+moment(this.state.last_refresh_time).format('HH:mm:ss') : null}</h4>
       </section>
     );
@@ -440,9 +474,8 @@ class PostsCommentsHistory extends Component{
   render(){
     var last_7 = [];
     (()=>{
-      var day_today = moment().format('DD');
       for(var i=0;i<7;i++){
-        last_7[i] = parseInt(day_today,10)-i;
+        last_7[i] = moment().subtract(i, 'day').format('YYYY-MM-DD');
       }
     })();
 
@@ -455,7 +488,7 @@ class PostsCommentsHistory extends Component{
             {last_7.map((day)=>{
               var count = 0;
               CommentCounts.CommentCounts.map((CommentCount)=>{
-                if(parseInt(CommentCount.date.substring(8,10),10) === day){
+                if(CommentCount.date.substring(0,10) === day){
                   count = CommentCount.count;
                 }
               });
@@ -596,6 +629,38 @@ function getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids,limit=25){
   });
 }
 
+function getFBComments(PAGE_ACCESS_TOKEN,comment_ids){
+  var batch = [];
+  var qparams = {
+    fields:'id,created_time,message,private_reply_conversation'
+  }
+  comment_ids.map((comment_id,i)=>{
+    var uri = comment_id;
+    batch[i] = {method:'GET',relative_url:uri+'?'+qs.stringify(qparams)};
+  });
+
+  return fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,batch)
+  .then(function(responses){
+    return responses;
+  });
+}
+
+/*
+function getFBPostsAndAttachmentComments(PAGE_ACCESS_TOKEN,post_ids,limit=25){
+  getFBPosts(PAGE_ACCESS_TOKEN,post_ids)
+  .then(function(responses){
+    if(responses && responses.length>=2){
+
+    }else{
+      window.error_log.push(new Error('getFBPosts, No Posts Found'))
+      throw new Error('getFBPosts, No Posts Found');
+    }
+    return getFBPostsComments(PAGE_ACCESS_TOKEN,post_and_attachment_ids,limit);
+  }).then(function(responses){
+    return responses;
+  });
+}
+*/
 function getFBPageLabels(PAGE_ACCESS_TOKEN){
   var uri = GRAPH_API_URL+'/me/labels';
   var qparams = {
@@ -891,26 +956,32 @@ function parseARString (str) {
   }
 }
 
-function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
+function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
   var post_ids = post_configs.map((post_config)=>(post_config.post_id));
-  var message_interval = timings.message_interval;
-  var get_comment_limit = timings.get_comment_limit;
+  var message_interval = general.message_interval;
+  var get_comment_limit = general.get_comment_limit;
 
   var do_hides = [];
   var do_hide_ids = [];
+
   var pm_messages = [];
   var pm_message_ids = [];
+  var pm_id_products = [];
+  var pm_post_ids = [];
+  var pm_t_mids = [];
+
   var comment_messages = [];
   var comment_message_ids = [];
   var label_ids = [];
   var label_id_ids = [];
   
+  
   var r = {};
 
   return getFBPostsComments(PAGE_ACCESS_TOKEN,post_ids,get_comment_limit)
   .then(function(responses){
-    console.log('getFBPostsComments');
-    console.log(responses);
+    console.log('getFBPostsComments on '+moment().format('YYYY-MM-DD HH:mm:ss'));
+    //console.log(responses);
     r.comments = responses;
 
     responses.map((comment,j)=>{
@@ -938,10 +1009,12 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
           if(Comment.can_reply_privately && shouldPM(Comment.message)){
             pm_messages.push(post_config.pm_message);
             pm_message_ids.push(Comment.id);
+            pm_id_products.push((post_config.id_product ? post_config.id_product : undefined));
+            pm_post_ids.push(post_config.post_id);
+
             comment_messages.push(post_config.comment_message);
             comment_message_ids.push(Comment.id);
             recordStatistics(post_config.post_id,'ADD_PM');
-            console.log('$$$ WHY IT DOES NOT EVEN REACH HERE'); 
             recordStatistics(post_config.post_id,'ADD_COMMENT');
             if(typeof post_config.label_id === 'number' && post_config.label_id){
               label_ids.push(post_config.label_id);
@@ -956,41 +1029,128 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,timings,post_configs){
 
         }
       });
-      //return getFBPageLabels(PAGE_ACCESS_TOKEN);
     });
-    console.log('$$$ IF IT SKIPPED THIS THEN THERE IS A FUCKING BIG PROBLEM');    
 
-    return postCommentVisibilities(PAGE_ACCESS_TOKEN,do_hide_ids,do_hides);
+    if(do_hides && do_hides.length>=1){
+      return postCommentVisibilities(PAGE_ACCESS_TOKEN,do_hide_ids,do_hides);
+    }else{
+      return true;
+    }
   }).then(function(response){
-    console.log('postCommentVisibilities');    
-    console.log(response);
+    if(response !== true){
+      console.log('postCommentVisibilities');    
+      console.log(response);
+    }
+
     if(pm_messages && pm_messages.length>=1){
       return postPrivateReplies(PAGE_ACCESS_TOKEN,pm_message_ids,pm_messages,message_interval);
     }else{
       return true;
     }
   }).then(function(response){
-    console.log('postPrivateReplies');
-    console.log(response);
+    if(response !== true){
+      console.log('postPrivateReplies');
+      console.log(response);
+    }
+
     if(comment_messages && comment_messages.length>=1){
       return postCommentComments(PAGE_ACCESS_TOKEN,comment_message_ids,comment_messages,message_interval);
     }else{
       return true;
     }
   }).then(function(response){
-    console.log('postCommentComments');
-    console.log(response);
+    if(response !== true){
+      console.log('postCommentComments');
+      console.log(response);
+    }
+
     if(label_ids && label_ids.length>=1){
       return postFBLabels(PAGE_ACCESS_TOKEN,label_ids,label_id_ids);
     }else{
       return true;
     }
   }).then(function(response){
-    console.log('postFBLabels');
-    console.log(response);
-    return r.comments; //FINAL RETURN VALUE
+    if(response !== true){
+      console.log('postFBLabels');
+      console.log(response);
+    }
+
+    if(pm_messages && pm_messages.length>=1){
+      return getFBComments(PAGE_ACCESS_TOKEN,pm_message_ids);
+    }else{
+      return true
+    }
+  }).then(function(response){
+    if(response !== true){
+      console.log('getFBComments');
+      console.log(response);
+    }
+
+    if(response && response.length){
+      var Comments = response;
+      Comments.map((Comment)=>{
+        pm_t_mids.push(Comment.private_reply_conversation.id);
+      });
+      console.log('$$$ pm_t_mids');
+      console.log(pm_t_mids);
+      return sendPMToServer(pm_post_ids,pm_message_ids,pm_id_products,pm_t_mids);
+    }else{
+      return true;
+    }
+  }).then(function(response){
+    if(response !== true){
+      console.log('sendPMToServer');
+      console.log(response);
+    }
+
+    return r.comments;
   });
 }
+
+function sendPMToServer(post_ids,comment_ids,id_products,t_mids){
+  if(  comment_ids.length === post_ids.length 
+    && comment_ids.length === id_products.length
+    && comment_ids.length === t_mids.length
+  ){
+    var pid = post_ids[0].split('_')[0];
+    var payload = [];
+    comment_ids.map((comment_id,i)=>{
+      payload.push({
+        comment_id:comment_id,
+        post_id:post_ids[i],
+        id_product:id_products[i],
+        t_mid:t_mids[i]
+      });
+    });
+    return fetch(BASE_DIR+'/msg/autopmpm?pid='+pid,{
+      method:'POST',
+      headers:{"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    }).then((res)=>(res.json()));
+  }else{
+    throw new Error('sendPMToServer arrays do not have same length ')
+  }
+}
+
+function testSendPMToServer(){
+  var pid = 1769068019987617;
+  var payload = [
+    {"comment_id":"1981784442049306_103882440211687","post_id":"1769068019987617_1981784442049306","t_mid":"t_mid.$cAAZI9X94O2timanPGFcaGSGTVOc-"},
+    {"comment_id":"1976333992594351_1360589567343840","post_id":"1769068019987617_1976333992594351","t_mid":"t_mid.1467031764365:82dfc744321b86d547"},
+    {"comment_id":"1958690941025323_431494393886746","post_id":"1769068019987617_1958690941025323","t_mid":"t_mid.$cAAYSARAN96timanrxFcaGSjYAiPa"},
+    {"comment_id":"1958690941025323_133819833841689","post_id":"1769068019987617_1958690941025323","t_mid":"t_mid.$cAAYSAd8-rXdiman5llcaGSxQTKLW"},
+    {"comment_id":"1958690941025323_133819667175039","post_id":"1769068019987617_1958690941025323","t_mid":"t_mid.$cAAYSBmbbvKdimaoIB1caGS_Qu4vx"},
+    {"comment_id":"1908666439361107_1323006061154127","post_id":"1769068019987617_1908666439361107","t_mid":"t_mid.$cAAYSA00m63ZimaoYCVcaGTPJ7Chc"},
+    {"comment_id":"1908666439361107_1703817546588785","post_id":"1769068019987617_1908666439361107","t_mid":"t_mid.$cAAYSBl6haTRimaom0VcaGTee8N4q"}
+  ];
+
+  return fetch(BASE_DIR+'/msg/autopmpm?pid='+pid,{
+    method:'POST',
+    headers:{"Content-Type": "application/json"},
+    body: JSON.stringify(payload),
+  }).then((res)=>(res.json()));
+}
+window.testSendPMToServer = testSendPMToServer;
 
 function shouldPM(message){
   if(message.toLowerCase().indexOf('pm') !== -1){
@@ -1001,40 +1161,66 @@ function shouldPM(message){
 }
 
 function configFillDefaults(config){
-  if(typeof config.timings === 'undefined'){
-    config.timings = {};
+  for(var name in config){
+    if(name !== 'schedule'){
+      if(typeof config[name].general === 'undefined'){
+        config[name].general = {};
+      }
+      if(typeof config[name].general.scanning_interval === 'undefined'){
+        config[name].general.scanning_interval = 5000;
+      }
+      if(typeof config[name].general.message_interval === 'undefined'){
+        config[name].general.message_interval = 3000;
+      }
+      if(typeof config[name].general.get_comment_limit === 'undefined'){
+        config[name].general.get_comment_limit = 25;
+      }
+    }
   }
-  if(typeof config.timings.scanning_interval === 'undefined'){
-    config.timings.scanning_interval = 5000;
-  }
-  if(typeof config.timings.message_interval === 'undefined'){
-    config.timings.message_interval = 3000;
-  }
+
   return config;
 }
 
-function postConfigFillDefaults(post_configs,default_config){
-  post_configs.map((post_config,i)=>{
-    if(typeof post_config.do_pm === 'undefined'){
-      post_config.do_pm = default_config.do_pm;
+function postConfigFillDefaults(config){
+
+  for(var name in config){
+    if(name !== 'schedule'){
+      var post_config_default = config[name].post_config_default;
+
+      config[name].post_configs.map((post_config,i)=>{
+        if(typeof post_config.do_pm === 'undefined'){
+          post_config.do_pm = post_config_default.do_pm;
+        }
+        if(typeof post_config.unhide === 'undefined'){
+          post_config.unhide = post_config_default.unhide;
+        }
+        if(typeof post_config.comment_message === 'undefined'){
+          post_config.comment_message = post_config_default.comment_message;
+        }
+        if(typeof post_config.pm_message === 'undefined'){
+          post_config.pm_message = post_config_default.pm_message;
+        }
+        if(typeof post_config.unable_pm_comment_message === 'undefined'){
+          post_config.unable_pm_comment_message = post_config_default.unable_pm_comment_message;
+        }
+        if(typeof post_config.label_id === 'undefined'){
+          post_config.label_id = post_config_default.label_id;
+        }
+
+        if(typeof post_config.reference === 'string'){
+          var id_product = referenceToIdProduct(post_config.reference);
+          if(id_product !== -1){
+            post_config.id_product = id_product;
+          }else{
+            alert('Product Reference does not Exist.\n product_reference='+post_config.reference);
+            //throw new Error('Product Reference does not Exist.\n product_reference='+post_config.reference);
+          }
+        }
+      });
     }
-    if(typeof post_config.unhide === 'undefined'){
-      post_config.unhide = default_config.unhide;
-    }
-    if(typeof post_config.comment_message === 'undefined'){
-      post_config.comment_message = default_config.comment_message;
-    }
-    if(typeof post_config.pm_message === 'undefined'){
-      post_config.pm_message = default_config.pm_message;
-    }
-    if(typeof post_config.unable_pm_comment_message === 'undefined'){
-      post_config.unable_pm_comment_message = default_config.unable_pm_comment_message;
-    }
-    if(typeof post_config.label_id === 'undefined'){
-      post_config.label_id = default_config.label_id;
-    }
-  });
-  return post_configs;
+  }
+
+  return config;
 } 
 
 function recordStatistics(post_id,stat_type){
@@ -1062,4 +1248,36 @@ function checkSchedule(schedule,current_moment){
   return mode; 
 }
 
+function getProducts(){
+  return fetch(BASE_DIR+'/msg/products',{
+    method:'GET',
+    headers:{"Content-Type":"application/x-www-form-urlencoded"},
+  }).then((res)=>(res.json()))
+  .then(function(response){
+    if(response && response.length >= 1){
+      return response;
+    }else{
+      throw new Error('Fetched Empty results');
+    }
+  });
+}
+
+function referenceToIdProduct(reference){
+  var Products = rstore.getState().Products;
+  var index = Products.findIndex((Product)=>(Product.reference === reference));
+  if(index !== -1){
+    return Products[index].id_product;
+  }else{
+    return -1;
+  }
+}
+
 window.error_log = [];
+
+getProducts()
+.then(function(Products){
+  rstore.dispatch({
+    type:'GET_PRODUCTS',
+    Products:Products
+  });
+});

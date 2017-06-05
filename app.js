@@ -14,6 +14,8 @@ var request = require('request');
 var rq = require('request-promise');
 var crypto = require('crypto');
 
+var { renderToString } = require('react-dom/server');
+
 var Sequelize = require('sequelize');
 var Treeize   = require('treeize');
 
@@ -589,7 +591,7 @@ app.get('/onsen', function (req, res) {
 
 app.get('/products', function (req, res) {
 
-	var limit = req.query.limit ? req.query.limit : 5;
+	var limit = parseInt(req.query.limit ? req.query.limit : 5);
 	var offset = parseInt(req.query.offset ? req.query.offset : 0);
 
 	sequelize.query(
@@ -1126,6 +1128,8 @@ app.get('/orders',function(req, res){
 			.grow(rows)
 		 	.getData();
 
+		renderToString();
+		console.log('renderToString success~ WTF');
 		//res.send({success:true,data:rootNode});
 		res.render('orders',{data:rootNode});
 	})

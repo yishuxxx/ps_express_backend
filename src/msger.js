@@ -99,6 +99,10 @@ var reducer = function(state=Immutable([]),action=null){
       state = Immutable.setIn(state, ["Employees"], action.Employees);
       break;
 
+    case 'GET_PRODUCTS':
+      state = Immutable.setIn(state, ["Products"], action.Products);
+      break;
+
     case 'GET_TAGS':
       state = Immutable.setIn(state, ['Tags'], action.Tags);
       break;
@@ -181,9 +185,7 @@ var reducer = function(state=Immutable([]),action=null){
       Conversations.sort(dateCompare);
 
       // SPECIAL TREATMENT FOR MESSAGE FILTER
-      console.log('$$$ SPECIAL TREATMENT FOR MESSAGE FILTER');
-      console.log(action.filter.message);
-      if(action.filter.message){
+      if(action.filter && action.filter.message){
         console.log(ConversationsLoaded.length);
         var t_mids_loaded = ConversationsLoaded.map((x)=>(x.t_mid)); 
       }
@@ -386,6 +388,31 @@ var reducer = function(state=Immutable([]),action=null){
 }
 var rstore = createStore(reducer,initial_state);
 
+class MultiSelect extends Component{
+  constructor(props){
+    super(props);
+  }
+
+  render(){
+    return(
+      <div style={{padding:'3px',margin:'3px',border:'1px solid black'}}>
+        <div className="label label-info">
+          <span className="label-text">asdasd </span>
+          <span className="btn-delete-label">x</span>
+        </div>
+        <div className="label label-info">
+          <span className="label-text">asdasd </span>
+          <span className="btn-delete-label">x</span>
+        </div>
+        <div className="label label-info">
+          <span className="label-text">asdasd </span>
+          <span className="btn-delete-label">x</span>
+        </div>
+      </div>
+    );
+  }
+}
+
 class MessageManager extends Component{
   constructor(props,context) {
     super(props,context);
@@ -492,6 +519,35 @@ class MessageManager extends Component{
     updateConversationLabels(pid,t_mid,all_selected_options);
   }
 
+  handleUpdateConversationProducts = (all_selected_options) => {
+    var pid = this.props.pid;
+    var t_mid = this.props.t_mid;
+    var ProductsOld = this.props.ConversationC.Products ? this.props.ConversationC.Products : [];
+    var id_products_old = ProductsOld.map((x)=>(x.id_product+""));
+    var id_products_new = all_selected_options.map((x)=>(x.value+""));
+    if(id_products_new.length > id_products_old.length){
+      var id_product;
+      id_products_new.map((x)=>{
+        if(id_products_old.indexOf(x) === -1){
+          id_product = x;
+        }
+      });
+      createConversationProduct(pid,t_mid,id_product);
+    }else if(id_products_new.length < id_products_old.length){
+      var id_product;
+      id_products_old.map((x)=>{
+        console.log(id_products_new.indexOf(x));
+        if(id_products_new.indexOf(x) === -1){
+          id_product = x;
+        }
+      });
+      deleteConversationProduct(pid,t_mid,id_product);
+      console.log(id_product)
+    }else{
+      throw new Error('Invalid parameter id_products_new/id_products_old');
+    }
+  }
+
   handleScrollLock = (event) =>{
     this.setState({auto_scroll_locked:!this.state.auto_scroll_locked});
   }
@@ -532,17 +588,28 @@ class MessageManager extends Component{
     var message_count = this.props.message_count;
     var FBLabels = this.props.FBLabels;
     var EmojiSelector = 
-    <Popover id="popover-trigger-click-root-close">
-      {this.emojis.map((emoji,i)=>(
-        <span key={'emoji'+i} className="emoji_icon" onClick={this.handleSelectEmoji.bind(this)}>{emoji}</span>
-      ))}
-    </Popover>;
+      <Popover id="popover-trigger-click-root-close">
+        {this.emojis.map((emoji,i)=>(
+          <span key={'emoji'+i} className="emoji_icon" onClick={this.handleSelectEmoji.bind(this)}>{emoji}</span>
+        ))}
+      </Popover>;
     var StickerSelector = 
-    <Popover id="popover-trigger-click-root-close">
-      {this.state.Stickers.map((Sticker,i)=>(
-        <img key={'sticker'+i} className="sticker_icon" src={BASEDIR+'/msg/media/'+Sticker.filename} data-attachment-id={Sticker.attachment_id} onClick={this.handleSendSticker}/>
-      ))}
-    </Popover>;
+      <Popover id="popover-trigger-click-root-close">
+        {this.state.Stickers.map((Sticker,i)=>(
+          <img key={'sticker'+i} className="sticker_icon" src={BASEDIR+'/msg/media/'+Sticker.filename} data-attachment-id={Sticker.attachment_id} onClick={this.handleSendSticker}/>
+        ))}
+      </Popover>;
+    var ProductSelector = 
+      <Popover id="popover-trigger-click-root-close">
+        <ReactSelect 
+          value={this.props.ConversationC.Products.map((x)=>(x.id_product)).join(',')}
+          options={this.props.Products.map((Product,i)=>({value:Product.id_product+"",label:Product.reference}))}
+          onChange={this.handleUpdateConversationProducts}
+          multi={true}
+          clearable={false}
+          style={{width:'200px'}}
+        />
+      </Popover>;
 
     return(
       <section className="MessageManager">
@@ -552,6 +619,12 @@ class MessageManager extends Component{
               <button className="btn btn-sm btn-info" onClick={this.handleGetMessages}>{(Messages.length+'/'+message_count)}</button>
               <button className="btn btn-sm btn-default" onClick={this.handleGetMessagesForceRefresh}><span className="glyphicon glyphicon-refresh"></span></button>
               <button className={"btn btn-sm"+(this.state.auto_scroll_locked ? ' btn-warning' : ' btn-default')} onClick={this.handleScrollLock}><span className="glyphicon glyphicon-lock"></span></button>
+              <OverlayTrigger trigger="click" rootClose placement="bottom" overlay={ProductSelector}>
+                <button className={"btn btn-sm"+(this.props.ConversationC.Products.length>0 ? ' btn-success' : ' btn-danger')}>
+                  <span className="glyphicon glyphicon-comment"></span>
+                  {'( '+this.props.ConversationC.Products.length+' )'}
+                </button>
+              </OverlayTrigger>
             </div>
             <span className="CustomerName pull-right">{this.props.ConversationC.name}</span>
           </div>
@@ -561,6 +634,7 @@ class MessageManager extends Component{
                 value={this.props.ConversationC.FBLabels.map((FBLabel,i)=>(FBLabel.label_id)).join(',')}
                 options={FBLabels.map((FBLabel,i)=>({value:FBLabel.label_id+'',label:FBLabel.name}))}
                 onChange={this.handleUpdateConversationLabels}
+                clearable={false}
                 multi={true}
               />
             </div>
@@ -692,6 +766,7 @@ class MessageManager extends Component{
           <OverlayTrigger trigger="click" rootClose placement="top" overlay={StickerSelector}>
             <button className="btn btn-sm btn-default" disabled={this.props.ConversationC && this.props.ConversationC.psid ? false : true}>Stick</button>
           </OverlayTrigger>
+
           <button className={"pull-right btn btn-sm"+(this.state.auto_scroll_locked ? ' btn-warning' : ' btn-default')} onClick={this.handleScrollLock}><span className="glyphicon glyphicon-lock"></span></button>          
         </section>
 
@@ -1476,21 +1551,16 @@ class ConversationCard extends Component{
   render(){
     if(this.props.Conversation.messages && this.props.Conversation.messages.data.length >=1){
       var messages = this.props.Conversation.messages.data.slice(0,4);
-      /*
-      var MessageFromCustomerLast = messages.find((x)=>{
-        if(x.from.id !== this.props.pid){
-          return true;
-        }
-      });
-      if(MessageFromCustomerLast){
-        var last_message_from_customer_timediff = moment().diff(moment(MessageFromCustomerLast.created_time),'seconds');
-      }
-      */
     }
+
     if(this.props.readings && this.props.readings.length>=1){
       var readings_c = this.props.readings.filter((reading)=>(reading.t_mid === this.props.Conversation.t_mid));
     }else{
       var readings_c = [];
+    }
+
+    if(this.props.Conversation.customer_replied_time){
+      var last_message_from_customer_timediff = moment().diff(moment(this.props.Conversation.customer_replied_time),'seconds')
     }
 
     return(
@@ -1510,14 +1580,14 @@ class ConversationCard extends Component{
               <span className="conversation_header">
                 <span></span>
                 <span className="sender_name">
-                  {/*this.props.Conversation.psid && last_message_from_customer_timediff < 30 
-                    ? '🈶 ' 
-                    : (this.props.Conversation.psid && last_message_from_customer_timediff >= 30 
+                  {this.props.Conversation.psid && last_message_from_customer_timediff < 86400
+                    ? '💧 ' 
+                    : (this.props.Conversation.psid && last_message_from_customer_timediff >= 86400 
                         ? '🕛 '
                         : null
                       )
-                  */}
-                  {this.props.Conversation.psid ? '💧 ' : null}
+                  }
+                  {/*this.props.Conversation.psid ? '💧 ' : null*/}
                   {this.props.Conversation.name ? this.props.Conversation.name : this.props.Conversation.participants.data[0].name}
                 </span>
               </span>
@@ -1762,6 +1832,7 @@ class ConversationManager extends Component{
                   Uploads={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].Uploads}
                   SReplies={this.props.Pages[this.props.Pages.findIndex((x)=>(x.pid===this.props.ConvManager.pid))].SReplies}
                   Tags={this.props.Tags}
+                  Products={this.props.Products}
                 />
               : null
             }
@@ -1826,6 +1897,7 @@ class MessengerApp extends Component{
                   readings={this.props.state.readings}
                   Tags={this.props.state.Tags}
                   me={this.props.state.me}
+                  Products={this.props.state.Products}
                 />
               : null
             }
@@ -1843,6 +1915,7 @@ class MessengerApp extends Component{
                   readings={this.props.state.readings}
                   Tags={this.props.Tags}
                   me={this.props.state.me}
+                  Products={this.props.state.Products}
                 />
               : null
             }
@@ -1922,6 +1995,16 @@ socket.on('GET_LABELS', function (data) {
     type:'GET_LABELS',
     pid:data.pid,
     FBLabels:data.data,
+  });
+  rerender();
+});
+
+socket.on('GET_PRODUCTS', function (data) {
+  console.log('ON GET_PRODUCTS');
+  console.log(data);
+  rstore.dispatch({
+    type:'GET_PRODUCTS',
+    Products:data.Products
   });
   rerender();
 });
@@ -2461,6 +2544,32 @@ function updateConversationLabels(pid,t_mid,labels){
   }
 }
 
+function createConversationProduct(pid,t_mid,id_product){
+  if(connected){
+    var data = {
+      crud:'CREATE',
+      pid:pid,
+      t_mid:t_mid,
+      id_product:id_product
+    };
+    socket.emit('CONVERSATION_PRODUCT', data);
+    console.log(data);
+  }
+}
+
+function deleteConversationProduct(pid,t_mid,id_product){
+  if(connected){
+    var data = {
+      crud:'DELETE',
+      pid:pid,
+      t_mid:t_mid,
+      id_product:id_product
+    };
+    socket.emit('CONVERSATION_PRODUCT', data);
+    console.log(data);
+  }
+}
+
 function syncLabels(pid){
   if (connected) {
     var data = { 
@@ -2674,6 +2783,7 @@ window.Immutable = Immutable;
   socket.emit('GET_EMPLOYEES',{});
   socket.emit('GET_READINGS',{});
   socket.emit('GET_TAGS',{});
+  socket.emit('GET_PRODUCTS', {});
 
   var pids = rstore.getState().Pages.map((Page)=>(Page.pid));
   pids.map((pid,i)=>{
