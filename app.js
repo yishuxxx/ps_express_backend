@@ -34,11 +34,23 @@ var LocalStrategy = require('passport-local').Strategy;
 var app = express();
 
 var winston = require('winston');
+var transport1 = 
+	new winston.transports.File({
+		filename: __dirname+'/error.log', 
+		handleExceptions: true,
+		humanReadableUnhandledException: true,
+		timestamp: true
+	});
+
 winston.configure({
-  transports: [
-    new (winston.transports.File)({ filename: 'error.log' })
-  ]
+	transports: [transport1],
+	exceptionHandlers: [
+		new winston.transports.File({ filename: __dirname+'/exceptions.log' })
+	],
+	exitOnError: false
 });
+
+winston.handleExceptions([transport1]);
 
 var debug = require('debug')('express-skel:server');
 var http = require('http');

@@ -993,9 +993,9 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
       comment.data.map((Comment,i)=>{
         if(typeof post_config.unhide === 'number'){
           if(Comment.can_hide && Comment.is_hidden && i < post_config.unhide){
-            do_hides.push(false);
-            do_hide_ids.push(Comment.id);
-            recordStatistics(post_config.post_id,'ADD_SHOWN');
+            //do_hides.push(false);
+            //do_hide_ids.push(Comment.id);
+            //recordStatistics(post_config.post_id,'ADD_SHOWN');
           }else if(Comment.can_hide && !Comment.is_hidden && i >= post_config.unhide){
             do_hides.push(true);
             do_hide_ids.push(Comment.id);

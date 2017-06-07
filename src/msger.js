@@ -1384,7 +1384,7 @@ class SReplyManager extends Component{
     //var Uploads = this.props.Uploads;
     //var UploadsSelected = Uploads.filter((Upload,i)=>(upload_ids.indexOf(Upload.upload_id) !== -1));
     //var filenames = UploadsSelected.map((UploadSelected,i)=>(UploadSelected.filename));
-    if(typeof attachment_id !== 'undefined'){
+    if(typeof attachment_id !== 'undefined' && attachment_id){
       sendMessage(pid,cman_i,t_mid,null,[attachment_id]);
     }
     sendMessage(pid,cman_i,t_mid,message);
