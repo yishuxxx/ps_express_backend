@@ -992,10 +992,10 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
 
       comment.data.map((Comment,i)=>{
         if(typeof post_config.unhide === 'number'){
-          if(Comment.can_hide && Comment.is_hidden && i < post_config.unhide){
-            //do_hides.push(false);
-            //do_hide_ids.push(Comment.id);
-            //recordStatistics(post_config.post_id,'ADD_SHOWN');
+          if(Comment.can_hide && Comment.is_hidden && i < post_config.unhide && post_config.do_show){
+            do_hides.push(false);
+            do_hide_ids.push(Comment.id);
+            recordStatistics(post_config.post_id,'ADD_SHOWN');
           }else if(Comment.can_hide && !Comment.is_hidden && i >= post_config.unhide){
             do_hides.push(true);
             do_hide_ids.push(Comment.id);
@@ -1009,8 +1009,10 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
           if(Comment.can_reply_privately && shouldPM(Comment.message)){
             pm_messages.push(post_config.pm_message);
             pm_message_ids.push(Comment.id);
-            pm_id_products.push((post_config.id_product ? post_config.id_product : undefined));
-            pm_post_ids.push(post_config.post_id);
+            if(general.do_product_tag){
+              pm_id_products.push((post_config.id_product ? post_config.id_product : undefined));
+              pm_post_ids.push(post_config.post_id);
+            }
 
             comment_messages.push(post_config.comment_message);
             comment_message_ids.push(Comment.id);
@@ -1075,7 +1077,7 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
       console.log(response);
     }
 
-    if(pm_messages && pm_messages.length>=1){
+    if(pm_id_products && pm_id_products.length>=1){
       return getFBComments(PAGE_ACCESS_TOKEN,pm_message_ids);
     }else{
       return true
@@ -1086,7 +1088,7 @@ function getCommentsAndDoJob(PAGE_ACCESS_TOKEN,general,post_configs){
       console.log(response);
     }
 
-    if(response && response.length){
+    if(pm_id_products && pm_id_products.length>=1 && response && response.length){
       var Comments = response;
       Comments.map((Comment)=>{
         pm_t_mids.push(Comment.private_reply_conversation.id);
@@ -1175,6 +1177,9 @@ function configFillDefaults(config){
       if(typeof config[name].general.get_comment_limit === 'undefined'){
         config[name].general.get_comment_limit = 25;
       }
+      if(typeof config[name].general.do_product_tag === 'undefined'){
+        config[name].general.do_product_tag = false;
+      }
     }
   }
 
@@ -1205,6 +1210,9 @@ function postConfigFillDefaults(config){
         }
         if(typeof post_config.label_id === 'undefined'){
           post_config.label_id = post_config_default.label_id;
+        }
+        if(typeof post_config.do_show === 'undefined'){
+          post_config.do_show = post_config_default.do_show;
         }
 
         if(typeof post_config.reference === 'string'){

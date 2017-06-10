@@ -4,6 +4,7 @@ let moment = require('moment');
 let {randomString,unique2DArray} = require('../src/Utils/Helper');
 let {FBGraphAPIStandardError, FBGraphAPIError, FBGraphAPINoResultError, SequelizeError, SequelizeNoResultError} = require('../src/Utils/Error');
 var fs = require('fs');
+var Promise = Sequelize.Promise;
 
 this.router = router;
 
@@ -107,27 +108,18 @@ io.on('connection', function(socket) {
 	console.log(socket.request.user);
 	socket.emit('GET_ME',socket.request.user);
 
-	function registerSocketEvent(event_name){
-		socket.on('GET_EMPLOYEES', function(data) {
-			console.log('======================== socket.on(GET_EMPLOYEES) =========================');
+	socket.on('GET_EMPLOYEES', function(q) {
+		console.log('======================== socket.on(GET_EMPLOYEES) =========================');
 
-			return Employee.scope('messenger').findAll()
-			.then(sequelizeHandler)
-			.then(function(Instances){
-				if(Instances){
-					console.log('======================== socket.emit(GET_EMPLOYEES) =========================');
-					socket.emit('GET_EMPLOYEES', {
-						Employees:Instances
-					});
-				}else{
-					throw new SequelizeNoResultError(JSON.stringify({data:data}));
-				}
-			}).catch(function(err){
-				catchHandler(err,null,socket);
+		return Employee.scope('messenger').findAll()
+		.then(x=>sequelizeHandler(x,q,'No Employees found'))
+		.then(function(Instances){
+			console.log('======================== socket.emit(GET_EMPLOYEES) =========================');
+			socket.emit('GET_EMPLOYEES', {
+				Employees:Instances
 			});
-		});
-	}
-	registerSocketEvent('GET_EMPLOYEES');
+		}).catch(err=>catchHandler(err,null,socket));
+	});
 
 	socket.on('GET_UPLOADS', function(data) {
 		console.log('======================== socket.on(GET_UPLOADS) =========================');
@@ -138,44 +130,30 @@ io.on('connection', function(socket) {
 			include:[{
 				model:FBXTag
 			}]
-		}).then(sequelizeHandler)
+		}).then(x=>sequelizeHandler(x,q,'FBUploads for this page NOT FOUND'))
 		.then(function(Instances){
-			if(Instances){
-				console.log('======================== socket.emit(GET_EMPLOYEES) =========================');
-				socket.emit('ADD_FILES', {
-					pid:q.pid,
-					FBUploads:Instances
-				});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+			console.log('======================== socket.emit(GET_EMPLOYEES) =========================');
+			socket.emit('ADD_FILES', {
+				pid:q.pid,
+				FBUploads:Instances
+			});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('GET_LABELS', function(data) {
 		console.log('======================== socket.on(GET_LABELS) START =========================');
 		var q = {pid:data.pid};
 
-		(()=>{
-			return FBLabel.findAll({
-				where:{pid:q.pid}
-			}).then(sequelizeHandler);
-		})()
+		return FBLabel.findAll({
+			where:{pid:q.pid}
+		}).then(x=>sequelizeHandler(x,q,'No Labels found for this page'))
 		.then(function(Instances){
-			if(Instances){
-				console.log('======================== socket.on(GET_LABELS) END =========================');
-				socket.emit('GET_LABELS', {
-					data:Instances,
-					pid:q.pid
-				});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+			console.log('======================== socket.on(GET_LABELS) END =========================');
+			socket.emit('GET_LABELS', {
+				data:Instances,
+				pid:q.pid
+			});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('GET_READINGS',function(data) {
@@ -207,33 +185,24 @@ io.on('connection', function(socket) {
 			id_product:data.id_product
 		};
 		var r = {};
-		console.log(q);
 
-		new Sequelize.Promise(function(resolve,reject){
+		new Promise(function(resolve,reject){
 			if(q.crud === 'CREATE'){
 				resolve(createConversationProduct(q.t_mid,q.id_product,undefined,undefined,socket.request.user.id_employee));
 			}else if(q.crud === 'DELETE'){
 				resolve(deleteConversationProduct(q.t_mid,q.id_product));
 			}else{
-				throw new Error(JSON.stringify({data:data}));
+				throw new Error(JSON.stringify({q:q,message:'crud operation does not exist'}));
 			}
 		}).then(function(Instance){
-			if(Instance){
-				return findOneConversation(q.t_mid);
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
+			return findOneConversation(q.t_mid);
 		}).then(function(Instance){
-			if(Instance){
-				r.FBConversation = Instance;
-				io.local.emit('NEW_MESSAGE',{
-					pid:q.pid,
-					t_mid:q.t_mid,
-					Conversation:r.FBConversation
-				});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
+			r.FBConversation = Instance;
+			io.local.emit('NEW_MESSAGE',{
+				pid:q.pid,
+				t_mid:q.t_mid,
+				Conversation:r.FBConversation
+			});
 		}).catch(function(err){
 			catchHandler(err,null,socket);
 			if(err instanceof Error){
@@ -249,17 +218,11 @@ io.on('connection', function(socket) {
 		var r = {};
 		findAllProduct()
 		.then(function(Instances){
-			if(Instances){
-				r.Products = Instances;
-				socket.emit('GET_PRODUCTS',{
-					Products:r.Products
-				});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+			r.Products = Instances;
+			socket.emit('GET_PRODUCTS',{
+				Products:r.Products
+			});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('UPDATE_CONVERSATION_LABELS', function(data) {
@@ -274,26 +237,22 @@ io.on('connection', function(socket) {
 
 		findOneConversation(r.t_mid)
 		.then(function(Instance){
-			if(Instance){
-				r.FBConversation = Instance;
-				if(r.FBConversation.FBLabels && r.FBConversation.FBLabels.length >= 1){
-					r.FBConversationLabels = r.FBConversation.FBLabels;
-					var promises = [];
-					r.FBConversationLabels.map((ConversationLabel,i)=>{
-						var index = r.labels.findIndex((x,i)=>(parseInt(x.value,10) === parseInt(ConversationLabel.label_id,10)));
-						if(index === -1){
-							promises.push(
-								destroyConversationLabel(r.t_mid,ConversationLabel.label_id)
-							);
-							promises.push(
-								deletePageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,ConversationLabel.label_id)
-							);
-						}
-					});
-					return Sequelize.Promise.all(promises);					
-				}
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
+			r.FBConversation = Instance;
+			if(r.FBConversation.FBLabels && r.FBConversation.FBLabels.length >= 1){
+				r.FBConversationLabels = r.FBConversation.FBLabels;
+				var promises = [];
+				r.FBConversationLabels.map((ConversationLabel,i)=>{
+					var index = r.labels.findIndex((x,i)=>(parseInt(x.value,10) === parseInt(ConversationLabel.label_id,10)));
+					if(index === -1){
+						promises.push(
+							destroyConversationLabel(r.t_mid,ConversationLabel.label_id)
+						);
+						promises.push(
+							deletePageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,ConversationLabel.label_id)
+						);
+					}
+				});
+				return Promise.all(promises);					
 			}
 		}).then(function(promise_all_result){
 			var promises = [];
@@ -309,13 +268,13 @@ io.on('connection', function(socket) {
 							t_mid_label_id:r.t_mid+'_'+label.value,
 							t_mid:r.t_mid,
 							label_id:label.value
-						}).then(sequelizeHandler)
+						}).then(x=>sequelizeHandler(x,{t_mid:r.t_mid,label_id:label.value},'FBConversationLabel.create returned no results'))
 					);
 
 					promises.push(postPageLabel(PAGE_ACCESS_TOKEN,r.FBConversation.uid,label.value));
 				}
 			});
-			return Sequelize.Promise.all(promises);
+			return Promise.all(promises);
 
 		}).then(function(promise_all_result){
 			return findOneConversation(r.t_mid);
@@ -325,9 +284,7 @@ io.on('connection', function(socket) {
 				pid:r.pid
 			});
 			console.log('======================== socket.on(UPDATE_CONVERSATION_LABELS) END =========================');
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 		
 	});
 
@@ -337,9 +294,7 @@ io.on('connection', function(socket) {
 		syncLabels(PAGE_ACCESS_TOKEN_LONG[pid], pid)
 		.then(function(nested){
 			socket.emit('SYNC_LABELS',{success:true,length:nested.length});
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('ENGAGE_CONVERSATION', function(data) {
@@ -354,39 +309,32 @@ io.on('connection', function(socket) {
 
 		return FBConversation.findOne({
 			where: {t_mid: q.t_mid},
-		}).then(sequelizeHandler)
+		}).then(x=>sequelizeHandler(x,{t_mid:t_mid},'FBConversation.findOne return no results'))
 		.then(function(Instance) {
-			if(Instance) {
-				r.FBConversation = Instance;
-				r.psid = r.FBConversation.psid ? r.FBConversation.psid : undefined;
-				r.FBConversation.engage_by = q.id_employee;
-				r.FBConversation.engage_time = moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss');
-				r.FBConversation.engage_release = 0;
-				return r.FBConversation.save();
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
+			r.FBConversation = Instance;
+			r.psid = r.FBConversation.psid ? r.FBConversation.psid : undefined;
+			r.FBConversation.engage_by = q.id_employee;
+			r.FBConversation.engage_time = moment().utcOffset(0).format('YYYY-MM-DD HH:mm:ss');
+			r.FBConversation.engage_release = 0;
+			return r.FBConversation.save()
+			.then(x=>sequelizeHandler(x,{t_mid:t_mid},'FBConversation.save return no results'));
 		}).then(function(Instance){
-			if(Instance){
-				var message_data = {
-					recipient: {
-						id: r.psid,
-					},
-					message: {
-						text: '[客服人员进入] 你好~ 我是 '+q.firstname+' 很高兴为你服务',
-						metadata: 'DEVELOPER_DEFINED_METADATA',
-					},
-				};
+			var message_data = {
+				recipient: {
+					id: r.psid,
+				},
+				message: {
+					text: '[客服人员进入] 你好~ 我是 '+q.firstname+' 很高兴为你服务',
+					metadata: 'DEVELOPER_DEFINED_METADATA',
+				},
+			};
 
-				return callSendAPI(message_data,'text',{
-					pid:q.pid,
-					t_mid:q.t_mid,
-					psid:(r.psid ? r.psid : undefined),
-					id_employee:q.id_employee
-				});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
+			return callSendAPI(message_data,'text',{
+				pid:q.pid,
+				t_mid:q.t_mid,
+				psid:(r.psid ? r.psid : undefined),
+				id_employee:q.id_employee
+			});
 		}).then(function(r2){
 			io.local.emit('NEW_MESSAGE', {
 				pid:q.pid,
@@ -394,9 +342,7 @@ io.on('connection', function(socket) {
 				Message:r2.FBMessage
 			});
 			console.log('======================== socket.on(NEW_MESSAGE) END =========================');
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('DELETE_ENGAGES', function(data) {
@@ -407,35 +353,24 @@ io.on('connection', function(socket) {
 		var r = {};
 
 		console.log('======================== FBConversation.findAll =========================');		
-		console.log(q);
-		(()=>{
-			return FBConversation.findAll({
-				where: {engage_by: q.id_employee},
-			}).then(sequelizeHandler);	
-		})()
-		.then(function(Instances) {
-			if(Instances) {
-				console.log('======================== FBConversation.save x N =========================');		
-				console.log(Instances.length);
-				r.FBConversations = Instances;
-				return Sequelize.Promise.mapSeries(r.FBConversations,function(FBConversation,i){
-					FBConversation.engage_release = 1;
-					return FBConversation.save();
-				});
-			}else{
-				//JUST SKIP IF NO ENGAGES
-			}
+		return FBConversation.findAll({
+			where: {engage_by: q.id_employee},
+		}).then(x=>sequelizeHandler(x,{engage_by:q.id_employee},'FBConversation.findAll returned no results'))
+		.then(function(Instances){
+			console.log('======================== FBConversation.save x N =========================');		
+			r.FBConversations = Instances;
+			return Promise.mapSeries(r.FBConversations,function(FBConversation,i){
+				FBConversation.engage_release = 1;
+				return FBConversation.save()
+				.then(x=>sequelizeHandler(x,{t_mid:FBConversation.t_mid},'FBConversation.save'));
+			});
 		}).then(function(unknown){
 			io.local.emit('DELETE_ENGAGES', {
 				Conversations:r.FBConversations,
 			});
 			console.log('======================== socket.emit(DELETE_ENGAGES) =========================');
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
-
-
 
 	socket.on('SYNC_CONVERSATIONS',function(data){
 
@@ -447,7 +382,7 @@ io.on('connection', function(socket) {
 		var count_conv = 0;
 		var count_msg = 0;
 
-		new Sequelize.Promise(function(resolve, reject) {
+		new Promise(function(resolve, reject) {
 			let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
 			let qs = {
 				access_token: PAGE_ACCESS_TOKEN,
@@ -469,7 +404,7 @@ io.on('connection', function(socket) {
 				return r;
 			});
 		}).then(function(r) {
-			return Sequelize.Promise.mapSeries(r.data,function(Conversation){
+			return Promise.mapSeries(r.data,function(Conversation){
 				return FBConversation.upsert({
 						pid: Conversation.participants.data[1].id,
 						uid: Conversation.participants.data[0].id,
@@ -491,11 +426,9 @@ io.on('connection', function(socket) {
 					}
 				)
 			});
-		}).then(function(Instances){
+		}).then(function(is_inserts){
 			socket.emit('SYNC_CONVERSATIONS',{success: true});
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('GET_CONVERSATIONS', function(data) {
@@ -550,97 +483,73 @@ io.on('connection', function(socket) {
 
 		console.log(condition);
 
-		new Sequelize.Promise(function(resolve,reject){
+		new Promise(function(resolve,reject){
 			if(!q.inbox && !q.label_ids && !q.engage_by && !q.name && !q.message){
 				resolve('NO_FILTER');
 			}else{
-				FBConversation.findAll(condition)
-				.then(sequelizeHandler)
+				return FBConversation.findAll(condition)
+				.then(x=>sequelizeHandler(x,{q:q},'Conversation you search for is not found'))
 				.then(function(Instances){
-					if(Instances){
-						var t_mids = Instances.map((FBConversation,i)=>(FBConversation.t_mid));
-						if(q.message){
-							return FBMessage.findAll({
-								attributes:['t_mid'],
-								where:{message:{$like:'%'+q.message+'%'},t_mid:{$in:t_mids}}
-							}).then(function(Instances){
-								if(Instances){
-									t_mids = Instances.map((FBMessage,i)=>(FBMessage.t_mid));
-									resolve(t_mids);
-								}else{
-									resolve([]);
-								}
-							});
-						}else{
+					var t_mids = Instances.map((FBConversation,i)=>(FBConversation.t_mid));
+					resolve(t_mids);
+
+					if(q.message){
+						return FBMessage.findAll({
+							attributes:['t_mid'],
+							where:{message:{$like:'%'+q.message+'%'},t_mid:{$in:t_mids}}
+						}).then(x=>sequelizeHandler(x,{q:q},'Conversation you search for is not found'))
+						.then(function(Instances){
+							t_mids = Instances.map((FBMessage,i)=>(FBMessage.t_mid));
 							resolve(t_mids);
-						}
-					}else{
-						resolve([]);
+						}).catch(function(err){
+							reject(err);
+						});
 					}
+				}).catch(function(err){
+					reject(err);
 				});
 			}
 		}).then(function(t_mids){
-			if(t_mids && ( (t_mids instanceof Array) && t_mids.length >=1 || t_mids === 'NO_FILTER')){
-				if((t_mids instanceof Array) && t_mids.length >=1){
-					var where = {t_mid:{$in:t_mids}};
-					if(q.before){
-						where.updated_time = {$lt:q.before};
-					}
-				}else{
-					var where = {pid:q.pid,updated_time:{$lt:q.before}};
+			if((t_mids instanceof Array) && t_mids.length >=1){
+				var where = {t_mid:{$in:t_mids}};
+				if(q.before){
+					where.updated_time = {$lt:q.before};
 				}
-				return FBConversation.findAll({
-					where:where,
-					include:[{
-						model:FBLabel
-					},{
-						model:Product,
-						attributes:['id_product','reference']
-					}/*,{
-						model:FBMessage,
-						include:[{
-							model:FBAttachment
-						},{
-							model:Employee.scope('messenger')
-						}]
-					}*/
-					],
-					limit:q.limit,
-					order:[['updated_time','DESC']],
-				}).then(sequelizeHandler);
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({message:'Conversation you search for is not found',data:data}));
+			}else if(t_mids === 'NO_FILTER'){
+				var where = {pid:q.pid,updated_time:{$lt:q.before}};
 			}
+
+			return FBConversation.findAll({
+				where:where,
+				include:[{
+					model:FBLabel
+				},{
+					model:Product,
+					attributes:['id_product','reference']
+				}],
+				limit:q.limit,
+				order:[['updated_time','DESC']],
+			}).then(x=>sequelizeHandler(x,{where:where},'FBConversation.findAll'));
 		}).then(function(Instances){
-			if(Instances){
-				r.FBConversations = Instances;
-				r.FBConversations.map((FBConversation,i)=>{
-					r.FBConversations[i] = r.FBConversations[i].get({plain:true});
-					if(r.FBConversations[i].messages){
-						r.FBConversations[i].FBMessages = undefined;
-						r.FBConversations[i].messages = {data:r.FBConversations[i].messages.data.slice(0,25)};
-					}
-				});
-				socket.emit('GET_CONVERSATIONS', {
-					pid:q.pid,
-					filter:q,
-					Conversations:r.FBConversations
-				});
-				console.log('======================== socket.on(GET_CONVERSATIONS) END =========================');				
-			}else{			
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
+			r.FBConversations = Instances;
+			r.FBConversations.map((FBConversation,i)=>{
+				r.FBConversations[i] = r.FBConversations[i].get({plain:true});
+				if(r.FBConversations[i].messages){
+					r.FBConversations[i].FBMessages = undefined;
+					r.FBConversations[i].messages = {data:r.FBConversations[i].messages.data.slice(0,25)};
+				}
+			});
+			socket.emit('GET_CONVERSATIONS', {
+				pid:q.pid,
+				filter:q,
+				Conversations:r.FBConversations
+			});
 		}).catch(function(err){
 			catchHandler(err,null,socket);
 			if(err instanceof SequelizeNoResultError){
 				socket.emit('GET_CONVERSATIONS', {
 					error:err.name,
 					message:'No Conversations matches the filter'
-				});
-			}else if(err instanceof Error){
-				socket.emit('GET_CONVERSATIONS', {
-					error:err.name,
-					message:err.message,
 				});
 			}
 		});
@@ -656,17 +565,15 @@ io.on('connection', function(socket) {
 		var r = {};
 
 		console.log('======================== 1 findAllMessages =========================');
-		new Sequelize.Promise(function(resolve, reject) {
+		new Promise(function(resolve, reject) {
 			if(q.latest_only === true){
 				findAllMessages(q.t_mid,{limit:25})
 				.then(function(Instances){
-					if(Instances){
-						r.FBMessages = Instances;
-						socket.emit('GET_MESSAGES', {
-							pid:q.pid,
-							Messages:r.FBMessages
-						});
-					}
+					r.FBMessages = Instances;
+					socket.emit('GET_MESSAGES', {
+						pid:q.pid,
+						Messages:r.FBMessages
+					});
 					resolve();
 				});
 			}else{
@@ -696,9 +603,7 @@ io.on('connection', function(socket) {
 					message:'No more messages to retreieve'
 				});
 			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('REFRESH_CONVERSATIONS', function(data){
@@ -731,7 +636,7 @@ io.on('connection', function(socket) {
 
 		p[1] = getConversations(PAGE_ACCESS_TOKEN_LONG[q.pid],q.pid,{limit:100,fields:'message_count,link,id,participants,snippet,unread_count,updated_time,messages.limit(1){id,from,message,created_time,attachments.limit(100){id,image_data,mime_type,name,size,video_data,file_url},to}'});
 		
-		Sequelize.Promise.all(p)
+		Promise.all(p)
 		.spread(function(Instances,Conversations_){
 			if(Instances && Conversations_){
 				console.log('======================== 2 find ConversationsToUpdate =========================');		
@@ -742,9 +647,6 @@ io.on('connection', function(socket) {
 
 				Conversations.map((Conversation,i)=>{
 					var FBConversation = FBConversations.find((x,i)=>(x.t_mid === Conversation.id));
-
-					//console.log(moment(Conversation.updated_time).format('YYYY-MM-DD HH:mm:ss')+'  -  '+moment(FBConversation.updated_time).format('YYYY-MM-DD HH:mm:ss'));
-					//console.log(time_diff);
 					if(FBConversation){
 						var time_diff = moment(Conversation.updated_time).diff(moment(FBConversation.updated_time));
 						if(time_diff > 0){
@@ -755,11 +657,9 @@ io.on('connection', function(socket) {
 						}else{
 							throw new Error(JSON.stringify({message:'time_diff is negative',data:data}));
 						}
-					}else if(typeof FBConversation === 'undefined'){
+					}else{
 						Conversation.t_mid = Conversation.id;
 						ConversationsToUpdate.push(Conversation);
-					}else{
-						throw new SequelizeNoResultError(JSON.stringify({data:data}));
 					}
 				});
 
@@ -769,7 +669,7 @@ io.on('connection', function(socket) {
 				});
 				r.Conversations = ConversationsToUpdate;
 
-				return Sequelize.Promise.all(p);
+				return Promise.all(p);
 			}else{
 				throw new SequelizeNoResultError(JSON.stringify({data:data}));
 			}
@@ -781,9 +681,7 @@ io.on('connection', function(socket) {
 				pid:q.pid,
 				Conversations:r.Conversations
 			});
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	let addedUser = false;
@@ -898,9 +796,7 @@ io.on('connection', function(socket) {
 				pid:r.pid
 			});
 			console.log('======================== socket.on(NEW_MESSAGE) END =========================');
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('ADD_FILES',function(data){
@@ -927,7 +823,7 @@ io.on('connection', function(socket) {
 			});
 		});
 
-  		Sequelize.Promise.mapSeries(file_infos,function(file_info,i){
+  		Promise.mapSeries(file_infos,function(file_info,i){
 			return rq({
 				uri: 'https://graph.facebook.com/v2.8/me/message_attachments',
 				qs: {
@@ -950,7 +846,7 @@ io.on('connection', function(socket) {
   			console.log('$$$ attachment_ids');
   			console.log(attachment_ids);
   			r.attachment_ids = attachment_ids.map((x)=>(x.attachment_id));
-			return Sequelize.Promise.mapSeries(file_infos,function(file_info,i){
+			return Promise.mapSeries(file_infos,function(file_info,i){
 				return FBUpload.create({
 					name:file_info.name ? file_info.name : file_info.filename_ori,
 					type:file_info.type,
@@ -962,7 +858,7 @@ io.on('connection', function(socket) {
 				.then(function(Instance){
 					if(Instance){
 						r.FBUploads[i] = Instance;
-						return Sequelize.Promise.mapSeries(file_info.tag_ids,function(tag_id,j){
+						return Promise.mapSeries(file_info.tag_ids,function(tag_id,j){
 							return FBXUploadTag.create({
 								upload_id_tag_id:Instance.upload_id+'_'+tag_id,
 								upload_id:Instance.upload_id,
@@ -987,9 +883,7 @@ io.on('connection', function(socket) {
 			}).then(sequelizeHandler);
 		}).then(function(Instances){
 			io.local.emit('ADD_FILES',{pid:q.pid,FBUploads:Instances});
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('DELETE_FILES',function(data){
@@ -1027,7 +921,7 @@ io.on('connection', function(socket) {
 				return r.upload_ids;
 			}
 		}).then(function(upload_ids){
-			return Sequelize.Promise.mapSeries(q.attachment_ids,function(attachment_id,i){
+			return Promise.mapSeries(q.attachment_ids,function(attachment_id,i){
 				return FBUpload.destroy({where:{attachment_id:attachment_id}})
 				.then(sequelizeHandler)
 				.then(function(Instance){
@@ -1037,9 +931,7 @@ io.on('connection', function(socket) {
 			});
 		}).then(function(unknown){
 			io.local.emit('DELETE_FILES',{pid:q.pid,attachment_ids:q.attachment_ids});
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('GET_SREPLIES',function(data){
@@ -1050,9 +942,7 @@ io.on('connection', function(socket) {
 			if(Instances){
 				socket.emit('GET_SREPLIES',{pid:q.pid,FBSReplies:Instances});
 			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('ADD_SREPLY',function(data){
@@ -1064,37 +954,30 @@ io.on('connection', function(socket) {
 			attachment_id:data.attachment_id
 		};
 
-		new Sequelize.Promise(function(resolve,reject){
-			
+		new Promise(function(resolve,reject){
 			if(typeof q.attachment_id !== 'undefined'){
 				FBUpload.findOne({where:{attachment_id:q.attachment_id}})
-				.then(sequelizeHandler)
+				.then(x=>sequelizeHandler(x,{attachment_id:q.attachment_id},'FBUpload.findOne'))
 				.then(function(Instance){
-					if(Instance){
-						resolve(Instance);
-					}else{
-						throw new SequelizeNoResultError(JSON.stringify({data:data}));
-					}
+					resolve(Instance);
 				});
 			}else{
 				resolve(false);
 			}
 		}).then(function(Instance){
-			return FBSReply.create({
+			var fields = {
 				title:q.title,
 				message:q.message,
 				upload_filename:Instance ? Instance.filename : undefined,
 				attachment_id:Instance ? Instance.attachment_id : undefined,
 				id_employee:socket.request.user.id_employee,
 				pid:q.pid
-			});
+			};
+			return FBSReply.create(fields)
+			.then(x=>sequelizeHandler(x,{fields:fields},'FBSReply.create'));
 		}).then(function(Instance){
-			if(Instance){
-				io.local.emit('ADD_SREPLY',{pid:q.pid,FBSReply:Instance});
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+			io.local.emit('ADD_SREPLY',{pid:q.pid,FBSReply:Instance});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('DELETE_SREPLIES',function(data){
@@ -1103,31 +986,22 @@ io.on('connection', function(socket) {
 			pid:data.pid,
 			sreply_ids:data.sreply_ids
 		};
-		console.log(q);
 
 		FBSReply.destroy({where:{sreply_id:{$in:q.sreply_ids}}})
-		.then(function(unknown){
-			if(unknown){
-				io.local.emit('DELETE_SREPLIES',{pid:q.pid,sreply_ids:q.sreply_ids});
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+		.then(x=>sequelizeHandler(x,{sreply_id:{$in:q.sreply_ids}},'FBSReply.destroy'))		
+		.then(function(deleted_rows){
+			io.local.emit('DELETE_SREPLIES',{pid:q.pid,sreply_ids:q.sreply_ids});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	socket.on('GET_TAGS',function(data){
 		console.log('======================== socket.on(GET_TAGS) =========================');
 
 		FBXTag.findAll()
+		.then(x=>sequelizeHandler(x,{},'FBXTag.findAll'))
 		.then(function(Instances){
-			if(Instances){
-				socket.emit('GET_TAGS',{FBXTags:Instances});
-			}else{
-				throw new SequelizeNoResultError(JSON.stringify({data:data}));
-			}
-		}).catch(function(err){
-			catchHandler(err,null,socket);
-		});
+			socket.emit('GET_TAGS',{FBXTags:Instances});
+		}).catch(err=>catchHandler(err,null,socket));
 	});
 
 	// when the client emits 'add user', this listens and executes
@@ -1226,7 +1100,7 @@ router.post('/getlongtoken', function(req, res) {
 		);
 	});
 
-	Sequelize.Promise.all(promises)
+	Promise.all(promises)
 	.then(function(Instances) {
 		FBPages = Instances;
 		for(let i=0; i<FBPages.length; i++) {
@@ -1251,7 +1125,7 @@ router.post('/getlongtoken', function(req, res) {
 			);
 		});
 
-		return Sequelize.Promise.all(promises);
+		return Promise.all(promises);
 	}).then(function(Bodys) {
 		res.send({Bodys});
 		let promises = [];
@@ -1261,7 +1135,7 @@ router.post('/getlongtoken', function(req, res) {
 			FBPage.expires_in = Bodys[i].expires_in;
 			promises.push(FBPage.save());
 		});
-		return Sequelize.Promise.all(promises);
+		return Promise.all(promises);
 	}).then(function(Instances) {
 		if(Instances) {
 			Instances.map((Instance, i)=>{
@@ -1340,7 +1214,7 @@ router.get('/countcomments', function(req, res) {
 		order: 'reverse_chronological',
 	};
 
-	new Sequelize.Promise(function(resolve, reject) {
+	new Promise(function(resolve, reject) {
 			// start first iteration of the loop
 			nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
 				let list = response.data;
@@ -1374,7 +1248,7 @@ router.get('/countcomments', function(req, res) {
 					})
 				);
 			});
-			return Sequelize.Promise.all(promises);
+			return Promise.all(promises);
 	}).then(function(Instances) {
 			console.log('END OF INSERTING');
 			return sequelize.query(
@@ -1396,7 +1270,7 @@ router.get('/upgrade',function(req,res){
 	.then(function(Instances){
 		if(Instances){
 			r.FBAttachments = Instances;
-			return Sequelize.Promise.mapSeries(r.FBAttachments,function(FBAttachment,i){
+			return Promise.mapSeries(r.FBAttachments,function(FBAttachment,i){
 				return FBMessageAttachment.create({
 					m_mid_attachment_id:FBAttachment.m_mid+'_'+FBAttachment.attachment_id,
 					m_mid:FBAttachment.m_mid,
@@ -1410,13 +1284,91 @@ router.get('/upgrade',function(req,res){
 });
 
 router.get('/test',function(req,res){
-	console.log(arguments);
-	
+
+	FBPage.destroy({where:{pid:123123}})
+	.then(function(Instance){
+		console.log('destroy - yes');
+		console.log(typeof Instance); //number
+		console.log(Instance ? true : false); //true
+		console.log(Instance); //1
+		return FBPage.upsert({
+			pid:123123,
+			name:'testing'
+		},{where: {pid: 123123}});
+	}).then(function(Instance){
+		console.log('upsert - insert');
+		console.log(typeof Instance); //boolean
+		console.log(Instance ? true : false); //true
+		console.log(Instance); //true
+		return FBPage.upsert({
+			pid:123123,
+			name:'testing'
+		},{where: {pid: 123123}});
+	}).then(function(Instance){
+		console.log('upsert - update');
+		console.log(typeof Instance); //boolean
+		console.log(Instance ? true : false); //false
+		console.log(Instance); //false
+	});
+
 	/*
-	new Sequelize.Promise(function(resolve,reject){
+	FBPage.destroy({where:{pid:123123}})
+	.then(function(Instance){	
+		console.log('destroy - yes');
+		console.log(typeof Instance); //number
+		console.log(Instance ? true : false); //true
+		console.log(Instance); //1
+		return FBPage.create({pid:123123,name:'testing'})
+	}).then(function(Instance){
+		console.log('create - yes');
+		console.log(typeof Instance); //object
+		console.log(Instance instanceof Sequelize.Instance); //true
+		console.log(Instance ? true : false); //true
+		return FBPage.create({pid:123124});
+	}).then(function(Instance){
+		// bypass
+	}).catch(function(err){
+		console.log('create - no');
+		if(err instanceof Error){
+			console.log(err.name);
+			console.log(err.message);
+		}
+	});
+	*/
+	/*
+	Employee.findOne({where:{id_employee:1}})
+	.then(function(Instance){
+		console.log('findOne - yes');
+		console.log(typeof Instance); //object
+		console.log(Instance instanceof Sequelize.Instance); //true
+		console.log(Instance ? true : false); // true
+		return Employee.findOne({where:{id_employee:10000}});
+	}).then(function(Instance){
+		console.log('findOne - no');
+		console.log(typeof Instance); //object
+		console.log(Instance instanceof Sequelize.Instance); //false
+		console.log(Instance ? true : false); //false
+		console.log(Instance); //null
+		return Employee.findAll({where:{id_employee:1}});
+	}).then(function(Instance){
+		console.log('findAll - yes');
+		console.log(typeof Instance); //object
+		console.log(Instance instanceof Array); //true
+		console.log(Instance.length); //1
+		return Employee.findAll({where:{id_employee:10000}});
+	}).then(function(Instance){
+		console.log('findOne - no'); 
+		console.log(typeof Instance); //object
+		console.log(Instance instanceof Array); //true
+		console.log(Instance.length); //0
+		console.log(Instance); //[]
+	});
+	*/
+	/*
+	new Promise(function(resolve,reject){
 		resolve(true);
 	}).then(function(success){
-		throw new Error(JSON.stringify({message:'This this for the user to see.',route:'/test',f:'Sequelize.Promise'}));
+		throw new Error(JSON.stringify({message:'This this for the user to see.',route:'/test',f:'Promise'}));
 	}).catch(function(err){
 		catchHandler(err,res,undefined);
 	});
@@ -1475,17 +1427,17 @@ router.post('/webhook', function(req, res) {
 			if(pageEntry.messaging) {
 				pageEntry.messaging.forEach(function(messagingEvent) {
 					if (messagingEvent.optin) {
-						receivedAuthentication(messagingEvent);
+						//receivedAuthentication(messagingEvent);
 					} else if (messagingEvent.message) {
 						receivedMessage(messagingEvent);
 					} else if (messagingEvent.delivery) {
 						receivedDeliveryConfirmation(messagingEvent);
 					} else if (messagingEvent.postback) {
-						receivedPostback(messagingEvent);
+						//receivedPostback(messagingEvent);
 					} else if (messagingEvent.read) {
-						receivedMessageRead(messagingEvent);
+						//receivedMessageRead(messagingEvent);
 					} else if (messagingEvent.account_linking) {
-						receivedAccountLink(messagingEvent);
+						//receivedAccountLink(messagingEvent);
 					} else {
 						console.log('Webhook received unknown messagingEvent: ', messagingEvent);
 					}
@@ -1542,32 +1494,24 @@ router.post('/autopmpm', function(req, res) {
 	var pms = req.body;
 	var r = {};
 	console.log(pms);
-	Sequelize.Promise.mapSeries(pms,(pm,i)=>{
+	Promise.mapSeries(pms,(pm,i)=>{
 		console.log(pm);
 		return createConversationProduct(pm.t_mid,(pm.id_product ? pm.id_product : 0),pm.comment_id,pm.post_id,undefined)
 	}).then(function(Instances){
-		if(Instances){
-			var t_mids = pms.map((pm)=>(pm.t_mid));
-			return FBConversation.findAll({
-				where:{t_mid:{$in:t_mids}},
-				include:[{
-					model:FBLabel
-				},{
-					model:Product,
-					attributes:['id_product','reference']
-				}]
-			});
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({query:req.query,body:req.body}));
-		}
+		var t_mids = pms.map((pm)=>(pm.t_mid));
+		return FBConversation.findAll({
+			where:{t_mid:{$in:t_mids}},
+			include:[{
+				model:FBLabel
+			},{
+				model:Product,
+				attributes:['id_product','reference']
+			}]
+		}).then(x=>sequelizeHandler(x,{t_mid:{$in:t_mids}},'FBConversation.findAll'));
 	}).then(function(Instances){
-		if(Instances){
-			r.FBConversations = Instances;
-			io.local.emit('GET_CONVERSATIONS', {pid:pid,Conversations:r.FBConversations});
-			res.send({success:true,pms:pms});
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({query:req.query,body:req.body}));
-		}
+		r.FBConversations = Instances;
+		io.local.emit('GET_CONVERSATIONS', {pid:pid,Conversations:r.FBConversations});
+		res.send({success:true,pms:pms});
 	}).catch(function(err){
 		catchHandler(err,res,undefined);
 	});
@@ -1672,7 +1616,7 @@ function graphAPIConversationEvent(change){
 	var r ={};
 	var PAGE_ACCESS_TOKEN = PAGE_ACCESS_TOKEN_LONG[q.pid];
 
-	Sequelize.Promise.all([
+	Promise.all([
 		getConversation(PAGE_ACCESS_TOKEN,q.t_mid),
 		getMessages(PAGE_ACCESS_TOKEN,q.t_mid,{limit:5,total_count:1,matchFunc:((x,i)=>(false))}),
 		findAllMessages(q.t_mid,{limit:5})
@@ -1705,28 +1649,24 @@ function graphAPIConversationEvent(change){
 
 			var MessagesNew = filterNewMessages(r.Messages,r.FBMessages);
 
-			return Sequelize.Promise.all([
+			return Promise.all([
 				upsertConversation(r.Conversation),
 				upsertMessages(q.t_mid,MessagesNew)
 			]);
 		}else{
 			throw new FBGraphAPINoResultError(JSON.stringify({change:change}));
 		}
-	}).spread(function(unknown,unknown){
-		return Sequelize.Promise.all([
+	}).spread(function(is_insert_conversation,is_inserts_messages){
+		return Promise.all([
 			findOneConversation(q.t_mid),
 			findAllMessages(q.t_mid,{limit:5})
 		]);
 	}).spread(function(fbconversation,fbmessages){
-		if(fbconversation && fbmessages){
-			io.local.emit('NEW_MESSAGE',{
-				pid:q.pid,
-				Conversation:fbconversation,
-				Messages:fbmessages
-			});
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({change:change}));
-		}
+		io.local.emit('NEW_MESSAGE',{
+			pid:q.pid,
+			Conversation:fbconversation,
+			Messages:fbmessages
+		});
 	}).catch(function(err){
 		catchHandler(err,undefined,undefined);
 	});
@@ -1869,26 +1809,24 @@ function receivedMessageRead(event) {
 
 	let r = {};
 	console.log('========================FIND MSG (START)=========================');
-	FBMessage.findAll({
-		where: {
+	var where = {
 			timestamp: {$lte: event.read.watermark},
 			psid_sender: event.sender.id,
 			psid_recipient: event.recipient.id,
-		},
-	}).then(function(Instances) {
+		};
+	FBMessage.findAll({
+		where: where,
+	}).then(x=>sequelizeHandler(x,where,'FBMessage.findAll'))
+	.then(function(Instances) {
 		console.log('========================FIND MSG (END)=========================');
 		console.log('========================UPDATE MSG (START)=========================');
 		r.FBMessages = Instances;
-		if(r.FBMessages) {
-			let queryList = [];
-			r.FBMessages.map(function(FBMessage, index) {
-				FBMessage.read_timestamp = event.timestamp;
-				queryList.push(FBMessage.save());
-			});
-			return Sequelize.Promise.all(queryList);
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({event:event}));
-		}
+		let queryList = [];
+		r.FBMessages.map(function(FBMessage, index) {
+			FBMessage.read_timestamp = event.timestamp;
+			queryList.push(FBMessage.save());
+		});
+		return Promise.all(queryList);
 	}).catch(function(err) {
 		catchHandler(err,undefined,undefined);
 	});
@@ -1952,7 +1890,7 @@ function callSendAPI(message_data,action_type,conversation_info=undefined) {
 		throw new Error(JSON.stringify({message:'Function Parameter is undefined',r:r}));
 	}
 
-	return new Sequelize.Promise(function(resolve,reject){
+	return new Promise(function(resolve,reject){
 
 		if(action_type === 'text' && !r.psid){
 			console.log('======================== postMessageByTMID =========================');
@@ -2011,17 +1949,13 @@ function callSendAPI(message_data,action_type,conversation_info=undefined) {
 			throw new FBGraphAPINoResultError(JSON.stringify({r:r}));
 		}
 	}).then(function(result) {
-		if(result){
-			if(result.FBConversation){
-				r.FBConversation = result.FBConversation;
-			}
-			if(result.FBMessage){
-				r.FBMessage = result.FBMessage;
-			}
-			return r;
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({r:r}));
+		if(result.FBConversation){
+			r.FBConversation = result.FBConversation;
 		}
+		if(result.FBMessage){
+			r.FBMessage = result.FBMessage;
+		}
+		return r;
 	});
 }
 
@@ -2052,10 +1986,7 @@ function getConversation(PAGE_ACCESS_TOKEN,t_mid){
 		},
 		method:'GET',
 		json:true
-	}).then(facebookGraphAPIHandler)
-	.then(function(response){
-		return response;
-	});
+	}).then(facebookGraphAPIHandler);
 }
 
 function getConversations2(PAGE_ACCESS_TOKEN, pid,options={}){
@@ -2065,7 +1996,7 @@ function getConversations2(PAGE_ACCESS_TOKEN, pid,options={}){
 
 	let result = {};
 
-	return new Sequelize.Promise(function(resolve, reject) {
+	return new Promise(function(resolve, reject) {
 		let uri = 'https://graph.facebook.com/v2.8/'+pid+'/conversations';
 		let qs = {
 			access_token: PAGE_ACCESS_TOKEN,
@@ -2143,7 +2074,7 @@ function getFBGraphAPIItems(uri,qs,options={}){
 	var total_count = typeof options.total_count !== 'undefined' ? options.total_count : 100;
 	var matchFunc = typeof options.matchFunc !== 'undefined' ? options.matchFunc : ((x,i)=>(false));
 
-	return new Sequelize.Promise(function(resolve, reject) {
+	return new Promise(function(resolve, reject) {
 		// start first iteration of the loop
 		nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
 			let list = response.data;
@@ -2204,7 +2135,7 @@ function fbAPIRequestIterator(uri,qs,limit,options={}){
 	var total_count = options.total_count === undefined ? limit-1 : options.total_count;
 	var matchFunc = options.matchFunc === undefined ? (x,i)=>(false) : options.matchFunc;
 
-	return new Sequelize.Promise(function(resolve, reject) {
+	return new Promise(function(resolve, reject) {
 		// start first iteration of the loop
 		nextFBRequest(resolve, reject, {uri: uri, qs: qs}, {data: []}, function(r, response) {
 			let list = response.data;
@@ -2227,8 +2158,6 @@ function fbAPIRequestIterator(uri,qs,limit,options={}){
 		});
 	}).then(function(r){
 		return r.data;
-	}).catch(function(err){
-		throw err;
 	});
 }
 
@@ -2239,7 +2168,7 @@ function fbAPIRequestBatcher(PAGE_ACCESS_TOKEN,requests){
 		batches.push(JSON.stringify(requests.splice(0,50)));
 	}
 
-	return Sequelize.Promise.mapSeries(batches,(batch,i)=>{
+	return Promise.mapSeries(batches,(batch,i)=>{
 		return rq({
 			uri: 'https://graph.facebook.com/v2.8/',
 			qs: {
@@ -2272,7 +2201,7 @@ function findOneMessage(m_mid){
 		},{
 			model:Employee.scope('messenger')
 		}]
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,{m_mid:m_mid},'FBMessage.findOne'));
 }
 
 function findAllMessages(t_mid,options={}){
@@ -2294,11 +2223,11 @@ function findAllMessages(t_mid,options={}){
 		}],
 		order:[['created_time','DESC']],
 		limit:limit
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,where,'FBMessage.findAll'));
 }
 
 function upsertMessages(t_mid,Messages){
-	return Sequelize.Promise.mapSeries(Messages,(Message,i)=>{
+	return Promise.mapSeries(Messages,(Message,i)=>{
 		return FBMessage.upsert({
 			m_mid: Message.id,
 			t_mid: t_mid,
@@ -2309,13 +2238,13 @@ function upsertMessages(t_mid,Messages){
 			//attachment_id: Message.attachments ? Message.attachments.data[0].id : null 
 		},{
 			where: {m_mid: Message.id}
-		}).then(sequelizeHandler)
+		}).then(x=>sequelizeHandler(x,{m_mid: Message.id},'FBMessage.upsert'))
 		.then(function(FBMessage){
 			//console.log(FBMessage);
 			//IMAGES, VIDEO, AUDIO FROM PAGE & USER
 			if(Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
-				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
+				return Promise.mapSeries(Attachments,function(Attachment){
 					return FBAttachment.upsert({
 						attachment_id:Attachment.id,
 						//m_mid:Message.id,
@@ -2327,7 +2256,7 @@ function upsertMessages(t_mid,Messages){
 						video_data:JSON.stringify(Attachment.video_data)
 					},{
 						where:{attachment_id:Attachment.id}
-					}).then(sequelizeHandler)
+					}).then(x=>sequelizeHandler(x,{attachment_id:Attachment.id},'FBAttachment.upsert'))
 					.then(function(unknown){
 						return FBMessageAttachment.upsert({
 							m_mid_attachment_id:Message.id+'_'+Attachment.id,
@@ -2335,7 +2264,7 @@ function upsertMessages(t_mid,Messages){
 							attachment_id:Attachment.id
 						},{
 							where:{m_mid_attachment_id:Message.id+'_'+Attachment.id}
-						}).then(sequelizeHandler);
+						}).then(x=>sequelizeHandler(x,{m_mid_attachment_id:Message.id+'_'+Attachment.id},'FBMessageAttachment.upsert'));
 					});
 				});
 			}
@@ -2344,7 +2273,7 @@ function upsertMessages(t_mid,Messages){
 }
 
 function upsertMessage(t_mid,Messages,event,id_employee){
-	return Sequelize.Promise.mapSeries(Messages,(Message,i)=>{
+	return Promise.mapSeries(Messages,(Message,i)=>{
 		return FBMessage.upsert({
 			m_mid: Message.id,
 			t_mid: t_mid,
@@ -2358,12 +2287,12 @@ function upsertMessage(t_mid,Messages,event,id_employee){
 			id_employee: id_employee ? id_employee : undefined
 		},{
 			where: {m_mid: Message.id}
-		}).then(sequelizeHandler)
-		.then(function(unknown){
+		}).then(x=>sequelizeHandler(x,{m_mid: Message.id},'FBMessage.upsert'))
+		.then(function(is_insert){
 			//IMAGES, VIDEO, AUDIO FROM PAGE & USER			
 			if(Message.attachments && Message.attachments.data.length >= 1){
 				var Attachments = Message.attachments.data;
-				return Sequelize.Promise.mapSeries(Attachments,function(Attachment){
+				return Promise.mapSeries(Attachments,function(Attachment){
 					return FBAttachment.upsert({
 						attachment_id:Attachment.id,
 						//m_mid:Message.id,
@@ -2373,20 +2302,20 @@ function upsertMessage(t_mid,Messages,event,id_employee){
 						file_url:Attachment.file_url,
 						size:Attachment.size,
 						video_data:JSON.stringify(Attachment.video_data)
-					}).then(sequelizeHandler)
-					.then(function(unknown){
+					}).then(x=>sequelizeHandler(x,{attachment_id: Attachment.id},'FBAttachment.upsert'))
+					.then(function(is_insert){
 						return FBMessageAttachment.upsert({
 							m_mid_attachment_id:Message.id+'_'+Attachment.id,
 							m_mid:Message.id,
 							attachment_id:Attachment.id
 						},{
 							where:{m_mid_attachment_id:Message.id+'_'+Attachment.id}
-						}).then(sequelizeHandler);
+						}).then(x=>sequelizeHandler(x,{m_mid:Message.id,attachment_id: Attachment.id},'FBMessageAttachment.upsert'));
 					});
 				});
 			//STICKERS FROM USERS ONLY
 			}else if(!Message.attachments && event && event.message && event.message.attachments && event.message.sticker_id){
-				return Sequelize.Promise.mapSeries(event.message.attachments,function(attachment,i,N){
+				return Promise.mapSeries(event.message.attachments,function(attachment,i,N){
 					//var attachment_id_generated = 'sid_'+randomString('16','#Aa');
 					var attachment_id_generated = 'sid_'+event.message.sticker_id;
 					return FBAttachment.upsert({
@@ -2397,15 +2326,15 @@ function upsertMessage(t_mid,Messages,event,id_employee){
 						sticker_id: event.message.sticker_id ? event.message.sticker_id : undefined,
 					},{
 						where:{sticker_id:event.message.sticker_id,m_mid:Message.id}
-					}).then(sequelizeHandler)
-					.then(function(unknown){
+					}).then(x=>sequelizeHandler(x,{payload: payload},'FBAttachment.upsert'))
+					.then(function(is_insert){
 						return FBMessageAttachment.upsert({
 							m_mid_attachment_id:Message.id+'_'+attachment_id_generated,
 							m_mid:Message.id,
 							attachment_id:attachment_id_generated
 						},{
 							where:{m_mid_attachment_id:Message.id+'_'+attachment_id_generated}
-						}).then(sequelizeHandler);
+						}).then(x=>sequelizeHandler(x,{m_mid: Message.id,attachment_id:attachment_id_generated},'FBMessageAttachment.upsert'));
 					});
 				});
 			}else{
@@ -2426,7 +2355,7 @@ function findOneConversation(t_mid){
 			model:Product,
 			attributes:['id_product','reference']
 		}]
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,{t_mid:t_mid},'FBConversation.findOne'));
 }
 
 function upsertConversation(Conversation,psid,replied_last_by){
@@ -2459,7 +2388,7 @@ function upsertConversation(Conversation,psid,replied_last_by){
 }
 
 function upsertConversations(Conversations){
-	return Sequelize.Promise.mapSeries(Conversations,function(Conversation,i){
+	return Promise.mapSeries(Conversations,function(Conversation,i){
 		return upsertConversation(Conversation,undefined);
 	}).then(sequelizeHandler);
 }
@@ -2471,12 +2400,12 @@ function destroyConversationLabel(t_mid,label_id){
 			label_id:label_id
 		},
 		force:true
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,{t_mid:t_mid,label_id:label_id},'FBConversationLabel.destroy returned no results'));
 }
 
 function findAllProduct(){
 	return Product.scope('admin').findAll()
-	.then(sequelizeHandler);
+	.then(x=>sequelizeHandler(x,{},'Product.findAll returned no results'));
 }
 
 function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
@@ -2485,7 +2414,7 @@ function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
 	console.log('2 ======================== 1 FBConversation.findOne(psid) =========================');
 	return FBConversation.findOne({
 		where : {psid:psid}
-	}).then(sequelizeHandler)
+	}).then(x=>sequelizeAllowEmptyHandler(x))
 	.then(function(Instance){
 		if(Instance){
 			console.log('2 ======================== 2.A* return t_mid =========================');
@@ -2506,7 +2435,7 @@ function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
 					console.log('2 ======================== 2.B2 FBConversation.findOne(pid,uid) =========================');					
 					return FBConversation.findOne({
 						where : {pid:pid,uid:r.uid}
-					}).then(sequelizeHandler)
+					}).then(x=>sequelizeAllowEmptyHandler(x))
 					.then(function(Instance){
 						if(Instance){
 							console.log('2 ======================== 2.B3.A* return t_mid =========================');					
@@ -2552,7 +2481,7 @@ function getTMID(PAGE_ACCESS_TOKEN,m_mid,psid,pid,upsert_missing=true){
 								if(upsert_missing === true){
 									return upsertConversations(r.Conversations);
 								}
-							}).then(function(success){
+							}).then(function(is_inserts){
 								return r.t_mid; //3RD RETURN CONDITION
 							});
 						}
@@ -2588,24 +2517,16 @@ function getAndUpsertMessageConversation(PAGE_ACCESS_TOKEN,t_mid,m_mid,event=und
 		}else{
 			throw new FBGraphAPINoResultError(JSON.stringify({data:{t_mid:t_mid,m_mid:m_mid}}));
 		}
-	}).then(function(InstanceOrSuccess){
+	}).then(function(is_insert){
 		return upsertConversation(r.Conversation, (psid ? psid : undefined),(id_employee ? id_employee : undefined));
-	}).then(function(success){
+	}).then(function(is_insert){
 		return findOneMessage(m_mid);
 	}).then(function(Instance){
-		if(Instance){
-			r.FBMessage = Instance;
-			return findOneConversation(t_mid);
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({data:{t_mid:t_mid,m_mid:m_mid}}));
-		}
+		r.FBMessage = Instance;
+		return findOneConversation(t_mid);
 	}).then(function(Instance){
-		if(Instance){
-			r.FBConversation = Instance;
-			return r;
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({data:{t_mid:t_mid,m_mid:m_mid}}));
-		}
+		r.FBConversation = Instance;
+		return r;
 	});
 }
 
@@ -2620,15 +2541,11 @@ function getAndUpsertConversation(PAGE_ACCESS_TOKEN,t_mid,psid,Conversation=unde
 		}else{
 			throw new FBGraphAPINoResultError(JSON.stringify({data:{t_mid:t_mid,psid:psid}}));
 		}
-	}).then(function(success){
+	}).then(function(is_insert){
 		return findOneConversation(t_mid);
 	}).then(function(Instance){
-		if(Instance){
-			r.FBConversation = Instance;
-			return r;
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({data:{t_mid:t_mid,psid:psid}}));
-		}
+		r.FBConversation = Instance;
+		return r;
 	});
 }
 
@@ -2637,7 +2554,7 @@ function getAndUpsertMessages(PAGE_ACCESS_TOKEN,pid,t_mid,options={}){
 	var limit = typeof options.limit !== undefined ? options.limit : 100;
 
 	var r = {};
-	return Sequelize.Promise.all([
+	return Promise.all([
 		getMessages(PAGE_ACCESS_TOKEN,t_mid,{limit:limit,total_count:total_count,matchFunc:((x,i)=>(false))}),
 		findAllMessages(t_mid)
 	]).spread(function(Messages,Instances){
@@ -2663,15 +2580,11 @@ function getAndUpsertMessages(PAGE_ACCESS_TOKEN,pid,t_mid,options={}){
 		}else{
 			throw new FBGraphAPINoResultError(JSON.stringify({data:{pid:pid,t_mid:t_mid,options:options}}));
 		}
-	}).then(function(success){
+	}).then(function(is_inserts){
 		return findAllMessages(t_mid,{limit:total_count});
 	}).then(function(Instances){
-		if(Instances && Instances.length>=1){
-			r.FBMessages = Instances;
-			return r;
-		}else{
-			throw new SequelizeNoResultError(JSON.stringify({data:{pid:pid,t_mid:t_mid,options:options}}));
-		}
+		r.FBMessages = Instances;
+		return r;
 	});
 }
 
@@ -2683,7 +2596,7 @@ function createConversationProduct(t_mid,id_product,comment_id,post_id,id_employ
 		comment_id:comment_id ? comment_id : undefined,
 		post_id:post_id ? post_id : undefined,
 		id_employee:id_employee ? id_employee : undefined
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,{t_mid:t_mid,id_product:id_product,comment_id:comment_id,post_id:post_id,id_employee:id_employee},'FBConversationProduct.create failed'));
 }
 
 function deleteConversationProduct(t_mid,id_product,id_employee){
@@ -2692,25 +2605,25 @@ function deleteConversationProduct(t_mid,id_product,id_employee){
 			t_mid:t_mid,
 			id_product:id_product
 		}
-	}).then(sequelizeHandler);
+	}).then(x=>sequelizeHandler(x,{t_mid:t_mid,id_product:id_product},'FBConversationProduct.destroy failed'));
 }
 
 function syncLabels(PAGE_ACCESS_TOKEN, pid){
 	var r = {};
 	return FBLabel.findAll({where:{pid:pid}})
+	.then(x=>sequelizeHandler(x,{pid:pid},'FBLabel.findAll returned no results'))
 	.then(function(Instances){
 		var label_ids = Instances.map((x,i)=>(x.label_id));
 		console.log('FBLabel.findAll({where:{pid:pid}}).length'+Instances.length);
-		return Sequelize.Promise.all([
+		return Promise.all([
 			FBLabel.destroy({
 				where: {pid: pid}
-			}),
+			}).then(x=>sequelizeHandler(x,{pid:pid},'FBLabel.destroy returned no results')),
 			FBConversationLabel.destroy({
 				where: {label_id: {$in:label_ids}}
-			})
+			}).then(x=>sequelizeHandler(x,{label_ids:label_ids},'FBConversationLabel.destroy returned no results'))
 		]);
 	}).spread(function(rows_deleted,rows_deleted2){
-		console.log('finish destroying');
 		return getPageLabels(PAGE_ACCESS_TOKEN,{limit:100});
 	}).then(function(Labels){
 		if(Labels && Labels.length>=1){
@@ -2739,32 +2652,33 @@ function syncLabels(PAGE_ACCESS_TOKEN, pid){
 
 			console.log('unique_users.length='+unique_users.length);
 
-			return Sequelize.Promise.mapSeries(r.Labels,(Label,i)=>{
+			return Promise.mapSeries(r.Labels,(Label,i)=>{
 				FBLabel.upsert({
 					label_id:Label.id,
 					name:Label.name,
 					pid:pid
 				},{where:{label_id:Label.id}})
+				.then(x=>sequelizeHandler(x,{label_id:label_id,pid:pid},'FBLabel.upsert returned no results'))
 			});
 		}else{
 			throw new Error('fbAPIRequestBatcher returns empty result');
 		}
 	}).then(function(Labels){
 		console.log('Labels.length='+Labels.length)
-		return Sequelize.Promise.mapSeries(r.unique_users,(User,i)=>{
+		return Promise.mapSeries(r.unique_users,(User,i)=>{
 			//console.log('User.i='+i+' User.id='+User.id);
 			return FBConversation.findOne({
 				where:{uid:User.id}
-			}).then(function(fbconversation){
+			}).then(x=>sequelizeHandler(x,{uid:User.id},'FBConversation.findOne returned no results'))
+			.then(function(fbconversation){
 				if(fbconversation && fbconversation.t_mid){
-					console.log('t_mid='+fbconversation.t_mid);
-					var FBConversationLabels = Sequelize.Promise.mapSeries(User.labels,(Label,i)=>{
+					var FBConversationLabels = Promise.mapSeries(User.labels,(Label,i)=>{
 						console.log('UserLabels.i='+i+' Labels.id='+Label.id);
 						return FBConversationLabel.create({
 							t_mid_label_id:fbconversation.t_mid+'_'+Label.id,
 							label_id:Label.id,
 							t_mid:fbconversation.t_mid
-						});
+						}).then(x=>sequelizeHandler(x,{t_mid:fbconversation.t_mid,label_id:Label.id},'FBConversationLabel.create returned no results'));
 					});
 					return FBConversationLabels;
 				}else{
@@ -2812,22 +2726,56 @@ function toMMID(id){
 	return id;
 }
 
-function sequelizeHandler(Instance){
-	if(Instance instanceof Array){
-		if(Instance.length >= 1 && Instance[0] instanceof Sequelize.Instance){
+function sequelizeHandler(Instance,request_params,no_result_message){
+	//findOne || create success
+	if(Instance instanceof Sequelize.Instance){
+		return Instance;
+	}
+	//findOne fail
+	if(typeof Instance === 'object' && !Instance){
+		if(typeof request_params === 'undefined'){
 			return Instance;
 		}else{
-			return null;
+			throw new SequelizeNoResultError(JSON.stringify({message:no_result_message,q:request_params}));
 		}
-	}else if(Instance instanceof Sequelize.Instance){
-		return Instance;
-	}else if(Instance >= 1 || Instance === true){ //for destroy and upsert
-		return Instance;
-	}else if(!Instance){
-		return Instance;
-	}else{
-		throw new SequelizeError(JSON.stringify(Instance));
 	}
+	//findAll success
+	if(Instance instanceof Array && Instance.length >= 1 && Instance[0] instanceof Sequelize.Instance){
+		return Instance;
+	}
+	//findAll fail
+	if(Instance instanceof Array && Instance.length === 0){
+		if(typeof request_params === 'undefined'){
+			return Instance;
+		}else{
+			throw new SequelizeNoResultError(JSON.stringify({message:no_result_message,q:request_params}));
+		}
+	}
+	//upsert insert success
+	if(typeof Instance === 'boolean' && Instance === true){ //for destroy and upsert
+		return Instance;
+	}
+	//upsert update success
+	if(typeof Instance === 'boolean' && Instance === false){ //for destroy and upsert
+		return Instance;
+	}
+	//destroy success
+	if(typeof Instance === 'number' && Instance >= 1){
+		return Instance;
+	}
+	//destroy fail
+	if(typeof Instance === 'number' && Instance === 0){
+		if(typeof request_params === 'undefined'){
+			return Instance;
+		}else{
+			throw new SequelizeNoResultError(JSON.stringify({message:no_result_message,q:request_params}));
+		}
+	}
+	throw new SequelizeError(JSON.stringify({message:'Unexpected results returned by sequelize query',Instance:Instance}));
+}
+
+function sequelizeAllowEmptyHandler(Instance){
+	return sequelizeHandler(Instance,undefined,undefined);
 }
 
 function facebookGraphAPIHandler(response){
