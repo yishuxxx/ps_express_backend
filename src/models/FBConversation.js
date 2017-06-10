@@ -1,7 +1,7 @@
-module.exports.FBMessageFunc = function(Sequelize,sequelize){
-    return sequelize.define('FBMessage',{
+module.exports.FBConversationFunc = function(Sequelize,sequelize){
+    return sequelize.define('FBConversation',{
       "id": {
-        "type": "INT(10) UNSIGNED",
+        "type": "INT(11) UNSIGNED",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false,
@@ -19,123 +19,126 @@ module.exports.FBMessageFunc = function(Sequelize,sequelize){
         defaultValue: null,
         "primaryKey": false
       },
-      "m_mid": {
+      "t_mid": {
         "type": "VARCHAR(64)",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true
       },
-      "t_mid": {
-        "type": "VARCHAR(64)",
+      "pid": {
+        "type": "BIGINT(20) UNSIGNED",
+        "allowNull": false,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "uid": {
+        "type": "BIGINT(20) UNSIGNED",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "created_time": {
+      "pid_uid": {
+        "type": "VARCHAR(64)",
+        "allowNull": false,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "psid": {
+        "type": "BIGINT(20) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "link": {
+        "type": "VARCHAR(128)",
+        "allowNull": false,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "updated_time": {
         "type": "DATETIME",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
-      "uid_from": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
+      "name": {
+        "type": "VARCHAR(64)",
+        "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
-      "uid_to": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "message": {
+      "snippet": {
         "type": "TEXT",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "seq": {
+      "unread_count": {
         "type": "INT(11) UNSIGNED",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "psid_sender": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
+      "message_count": {
+        "type": "INT(11) UNSIGNED",
+        "allowNull": false,
         "defaultValue": null,
         "primaryKey": false
       },
-      "psid_recipient": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "timestamp": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "delivered_timestamp": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "delivered": {
-        "type": "TINYINT(4) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "read_timestamp": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": true,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "id_employee": {
+      "engage_by": {
         "type": "INT(10) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "engage_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "engage_release": {
+        "type": "TINYINT(3) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "replied_last_by": {
+        "type": "INT(10) UNSIGNED",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "replied_last_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "customer_replied_time": {
+        "type": "DATETIME",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "customer_replied": {
+        "type": "TINYINT(3) UNSIGNED",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       }
     },{
-        tableName:'fb_message',
+        tableName:'fb_conversation',
         timestamps:false,
         createdAt:false,
         updatedAt:false,
         deletedAt:false,
         underscored:true,
-        scopes:{
-            user:{
-                attributes:[
-                    'm_mid',
-                    't_mid',
-                    'created_time',
-                    'from',
-                    'to',
-                    'message',
-                    'delivered_timestamp',
-                    'delivered',
-                    'read_timestamp',
-                    'id_employee'
-                ]
-            }
-        },
+        scopes:{},
         getterMethods: {
-          from:  function() {
-            return {id:this.uid_from};
-          },
-          to:  function() {
-            return {id:this.uid_to};
-          },
-          attachments: function() {
-            if(this.FBAttachments && this.FBAttachments.length >= 1){
-              return {data:this.FBAttachments};
+          messages: function() {
+            if(this.FBMessages && this.FBMessages.length >= 1){
+              return {data:this.FBMessages};
             }
             return null;
           }

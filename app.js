@@ -8,9 +8,13 @@ var bodyParser = require('body-parser');
 var multer = require('multer'); // v1.0.5
 var upload = multer(); // for parsing multipart/form-data
 var session = require('express-session');
+var RedisStore = require('connect-redis')(session);
+var redis = require('redis-url').connect();
 var request = require('request');
 var rq = require('request-promise');
 var crypto = require('crypto');
+
+var { renderToString } = require('react-dom/server');
 
 var Sequelize = require('sequelize');
 var Treeize   = require('treeize');
@@ -24,9 +28,29 @@ var md5 = require('crypto-js/md5');
 var {settings} = require('./settings');
 
 var passport = require('passport');
+var passportSocketIo = require('passport.socketio');
 var LocalStrategy = require('passport-local').Strategy;
 
 var app = express();
+
+var winston = require('winston');
+var transport1 = 
+	new winston.transports.File({
+		filename: __dirname+'/error.log', 
+		handleExceptions: true,
+		humanReadableUnhandledException: true,
+		timestamp: true
+	});
+
+winston.configure({
+	transports: [transport1],
+	exceptionHandlers: [
+		new winston.transports.File({ filename: __dirname+'/exceptions.log' })
+	],
+	exitOnError: false
+});
+
+winston.handleExceptions([transport1]);
 
 var debug = require('debug')('express-skel:server');
 var http = require('http');
@@ -41,17 +65,23 @@ server.on('listening', onListening);
 const _COOKIE_KEY_ = settings._COOKIE_KEY_;
 
 var sequelize = new Sequelize(settings.db_name, settings.db_user, settings.db_passwd, {
-  host: settings.db_host,
-  dialect: 'mysql',
+	host: settings.db_host,
+	dialect: 'mysql',
+	logging: true,
+	benchmark: true,
 
-  pool: {
-    max: 5,
-    min: 0,
-    idle: 10000
-  },
-
+	pool: {
+		max: 5,
+		min: 0,
+		idle: 10000
+	},
+	dialectOptions: {
+		charset: 'utf8mb4',
+		supportBigNumbers: true
+	},
 });
-var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io);
+
+//var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io,winston);
 
 // view engine setup
 app.set('views', path.join(__dirname, 'views'));
@@ -60,17 +90,26 @@ app.set('view engine', 'ejs');
 app.locals.base_dir = settings.base_dir;
 
 // uncomment after placing your favicon in /public
+app.use(favicon(__dirname + '/public/images/sy_logo_16px.ico'));
 app.use(logger('dev'));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 //for login session
-app.use(session({ secret: 'keyboard cat' }));
+var sessionStore = new RedisStore({ client: redis });
+app.use(session({
+    store: sessionStore,
+    secret: 'keyboard cat',
+    proxy: true,
+    resave: true,
+    saveUninitialized: false
+}));
+
 app.use(passport.initialize());
 app.use(passport.session());
 //for routing
-app.use('/msg', msg.router);
+//app.use('/msg', msg.router);
 
 //____MIDDLEWARE END
 
@@ -86,7 +125,6 @@ var isUnique = function (modelName, field) {
         next();
       }
   	});
-
   };
 };
 var {uniqueValidatorFunc} = require('./src/models/custom_validator/unique_validator');
@@ -406,7 +444,7 @@ passport.deserializeUser(function(email, done) {
 	Employee.findOne({
 		where:{email: email}
 	}).then(function(Employee){
-		done(null, {email:Employee.email});
+		done(null, {id_employee:Employee.id_employee,email:Employee.email,lastname:Employee.lastname,firstname:Employee.firstname});
 	}).catch(function(err){
 		if (err) { return done(err); }
 	});
@@ -436,19 +474,28 @@ passport.use(new LocalStrategy( function(username, password, done) {
 
 }));
 
+io.use(passportSocketIo.authorize({
+  key: 'connect.sid',
+  secret: 'keyboard cat',
+  store: sessionStore,
+  passport: passport,
+  cookieParser: cookieParser
+}));
+
 app.all([
 	'/order/get/:id',
 	'/order/update/:id',
 	'/fastpage',
-	'/inputpage'
+	'/inputpage',
+	'/msg/msger'
 ],function(req,res,next){
 	console.log('################## INSIDE req.user checking function');
 	console.log(req.user);
     if(!req.user){
     	if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-    		res.send({success:false,redirect:'/login',message:'Please login first'});
+    		res.send({success:false, redirect:settings.base_dir + '/login', message:'Please login first'});
     	}else{
-			res.redirect('/login?redirect='+req.path);
+			res.redirect(settings.base_dir+'/login?redirect='+settings.base_dir+req.path);
     	}
     }else{
     	next();
@@ -472,6 +519,9 @@ app.all([
 		}
 	});
 });
+
+var msg = new Msg(express,request,rq,crypto,settings,Sequelize,sequelize,io,winston);
+app.use('/msg', msg.router);
 
 app.get('/login',function(req,res){
 	res.render('./login',{data:{redirect:req.query.redirect}});
@@ -507,10 +557,14 @@ app.post('/login', function(req, res, next) {
 	    if(req.query.redirect){
 	    	res.redirect(req.query.redirect);
 	    }else{
-	    	res.redirect('/policies/privacy');
+	    	res.redirect(settings.base_dir+'/policies/privacy');
 	    }
 	}else if(!req.user){
-		res.redirect('/login?redirect='+req.query.redirect)
+	    if(req.query.redirect){
+	    	res.redirect(settings.base_dir+"/login?redirect="+req.query.redirect);
+	    }else{
+	    	res.redirect(settings.base_dir+"/login");
+	    }
 	}else{
 		res.send({success:false,message:'error after login'});
 	}
@@ -520,7 +574,11 @@ app.post('/login', function(req, res, next) {
 app.get('/logout',function(req,res,next){
     req.logout();
     req.session.destroy();
-    res.redirect("/login");
+    if(req.query.redirect){
+    	res.redirect(settings.base_dir+"/login?redirect="+req.query.redirect);
+    }else{
+    	res.redirect(settings.base_dir+"/login");
+    }
 });
 
 app.get('/policies/privacy',function(req,res){
@@ -531,13 +589,21 @@ app.get('/privatereply',function(req,res){
 	res.render('privatereply',{});
 });
 
+app.get('/privatereply2',function(req,res){
+	res.render('privatereply2',{});
+});
+
+app.get('/privatereply3',function(req,res){
+	res.render('privatereply3',{});
+});
+
 app.get('/onsen', function (req, res) {
   res.render('onsen', { test: req.test });
 })
 
 app.get('/products', function (req, res) {
 
-	var limit = req.query.limit ? req.query.limit : 5;
+	var limit = parseInt(req.query.limit ? req.query.limit : 5);
 	var offset = parseInt(req.query.offset ? req.query.offset : 0);
 
 	sequelize.query(
@@ -1074,6 +1140,8 @@ app.get('/orders',function(req, res){
 			.grow(rows)
 		 	.getData();
 
+		renderToString();
+		console.log('renderToString success~ WTF');
 		//res.send({success:true,data:rootNode});
 		res.render('orders',{data:rootNode});
 	})

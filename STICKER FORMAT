@@ -1,0 +1,94 @@
+//RECEIVE MSG FORMAT
+{
+	sender:{id:"1348512928518254"},
+	recipient:{id:"1769068019987617"},
+	timestamp:1493801724289,
+	message:{
+		mid:"mid.$cAAZI9RpVZSth_sqxgVbzYVpGuPuH",
+		seq:32007,
+		text:"是"
+	}
+}
+//RECEIVE DELIVERY CONFIRMATION FORMAT
+{ sender: { id: '1323687144345912' },
+  recipient: { id: '1769068019987617' },
+  timestamp: 1493728272934,
+  delivery: 
+   { mids: [ 'mid.$cAAYSBk9f8J9h-mno51bySS874HUS' ],
+     watermark: 1493728272615,
+     seq: 0 } }
+
+//CONVERSATION UPDATE EVENT FORMAT
+{
+"entry":
+	[
+		{"changes":[
+			{	"field":"conversations",
+				"value":{
+					"thread_id":"_mid.14833205540:9182a4e489",
+					"page_id":4444444}
+				}
+			],
+		"id":"599188074",
+		"time":1494078657}
+	],
+"object":"page"
+}
+
+// STICKER FORMAT
+{
+	"mid": "mid.$cAAXm2mUxm0hhyl_ZXVbmRqSPAtAf",
+	"seq": 886239,
+	"sticker_id": 369239263222822,
+	"attachments": [
+		{
+			"type": "image",
+			"payload": {
+				"url": "https://scontent.xx.fbcdn.net/v/t39.1997-6/851557_369239266556155_759568595_n.png?_nc_ad=z-m&oh=547beb90237e24a9682810a5144c9fba&oe=5988CFDC",
+				"sticker_id": 369239263222822
+			}
+		}
+	]
+}
+
+//IMAGE FORMAT
+{
+	"mid": "mid.$cAAXm2mUxm0hhymLU9lbmR2H5fIUV",
+	"seq": 886244,
+	"attachments": [
+		{
+			"type": "image",
+			"payload": {
+				"url": "https://scontent.xx.fbcdn.net/v/t34.0-12/18051887_10154780464548075_756393787_n.jpg?_nc_ad=z-m&oh=1493a2fbf51c0898c3df38ab05d0ac55&oe=58FE2B58"
+			}
+		}
+	]
+}
+
+//CAMERA IMAGE
+{
+	"mid": "mid.$cAAXm2mUxm0hhytalmlbmZFdOuyiq",
+	"seq": 886275,
+	"attachments": [
+		{
+			"type": "image",
+			"payload": {
+				"url": "https://scontent.xx.fbcdn.net/v/t34.0-12/18136223_10154780668033075_1960190371_n.png?_nc_ad=z-m&oh=eea643b1975d1842e3a4b6f7c13251f4&oe=58FE2508"
+			}
+		}
+	]
+}
+
+//AUDIO CLIP
+{
+	"mid": "mid.$cAAXm2mUxm0hhytlFZlbmZPzfPt8X",
+	"seq": 886280,
+	"attachments": [
+		{
+			"type": "audio",
+			"payload": {
+				"url": "https://cdn.fbsbx.com/v/t59.3654-21/15308083_224851594592823_4380195072243662848_n.mp4/audioclip-1492930263000-4784.mp4?oh=839a0e305f8ebda6a4c719438966780a&oe=58FEE0E4"
+			}
+		}
+	]
+}

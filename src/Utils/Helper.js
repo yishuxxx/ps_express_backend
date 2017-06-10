@@ -149,3 +149,41 @@ var syDateFormat = function(str){
 }
 
 module.exports.syDateFormat = syDateFormat;
+
+function randomString(length, chars) {
+    var mask = '';
+    if (chars.indexOf('a') > -1) mask += 'abcdefghijklmnopqrstuvwxyz';
+    if (chars.indexOf('A') > -1) mask += 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    if (chars.indexOf('#') > -1) mask += '0123456789';
+    if (chars.indexOf('!') > -1) mask += '~`!@#$%^&*()_+-={}[]:";\'<>?,./|\\';
+    var result = '';
+    for (var i = length; i > 0; --i) result += mask[Math.floor(Math.random() * mask.length)];
+    return result;
+}
+
+module.exports.randomString = randomString;
+
+function unique2DArray(array,fieldname){
+  var ids = array.map((x)=>(x[fieldname]));
+  return array.filter((x,i)=>(ids.indexOf(x[fieldname]) === i));
+}
+
+module.exports.unique2DArray = unique2DArray;
+
+function arrayToObject (arr,id_name){
+  var obj = {};
+  arr.map((item,i)=>{
+    obj[item[id_name]] = item;
+  });
+  return obj;
+}
+module.exports.arrayToObject = arrayToObject;
+
+function arrayToKey (arr,id_name){
+  var output = [];
+  arr.map((item,i)=>{
+    output[i] = item[id_name];
+  });
+  return output;
+}
+module.exports.arrayToKey = arrayToKey;

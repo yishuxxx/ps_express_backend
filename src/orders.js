@@ -46,6 +46,43 @@ var MyPage = React.createClass({
     var reference = '---';
     return (
       <table style={{width:'3500px'}}>
+      <thead>
+        <tr>
+            <th>ref</th>
+            <th>date</th>
+            <th>page</th>
+            <th>product</th>
+            <th>{""}</th>
+            <th>quantity</th>
+            <th>unit_price</th>
+            <th>shipping</th>
+            <th>discount</th>
+            <th>r.balance</th>
+            <th>paid</th>
+            <th>{""}</th>
+            <th>{""}</th>{/* PaymentNotes */}
+            <th>{""}</th>{/* Bank */}
+            <th>payment_method</th>
+            <th>{""}</th>{/* PaymentStatus */}
+            <th>{""}</th>{/* PrintInvoice */}
+            <th>{""}</th>{/* Tag */}
+            <th>{""}</th>{/* Resend */}
+            <th>{""}</th>{/* Note */}
+            <th>tracking_number</th>
+            <th>{""}</th>{/* status_name */}
+            <th>{""}</th>{/* ShipOutDate */}
+            <th>fb name</th>
+            <th>receiver name</th>
+            <th>address1</th>
+            <th>address2</th>
+            <th>address3</th>
+            <th>address4</th>
+            <th>postcode</th>
+            <th>state</th>
+            <th>phone</th>
+            <th>email</th>
+          </tr>
+      </thead>
       <tbody>
         {rows.map((row, index) => {
           if(row.date_add){

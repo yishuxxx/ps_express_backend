@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <title>Avalon Messenger</title>
+    <!--link rel="stylesheet" href="/css/chat.css"-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/latest/css/bootstrap.min.css"/>
+    <link rel="stylesheet" href="<%= base_dir %>/css/react-datetime.css"/>
+    <link rel="stylesheet" href="https://unpkg.com/react-select/dist/react-select.css">
+
+    <style>
+      body{
+        height:100vh;
+        width:calc(100vw - 50px);
+        margin:auto;
+        background-color:aliceblue;
+        font-family:"Helvetica Neue",Helvetica,Arial,sans-serif,"Microsoft Yahei";        
+      }
+      .clear{clear:both;}
+
+      .ConversationListBox{padding:5px;}
+      .ConversationListBox div.header{font-weight:bold;}
+
+      .ConversationList{
+        height:calc(100vh - 22px - 40px - 30px - 30px - 2px);
+        border:1px solid #ccc;
+        overflow-y: auto;
+        overflow-x:hidden;
+        background-color:#fff;
+        display:block;
+      }
+      .ConversationCard{border-bottom:1px solid #f7f7f7;padding:3px;}
+      .ConversationCard:hover{cursor:pointer;background-color:#eee;}      
+      .ConversationCard.active{background-color:#eee;}
+      .ConversationCard.active:hover{cursor:default;}
+      .ConversationCard.unread{font-weight:bold;color:red;}
+
+      .ConversationCard .sender_name{}
+      .ConversationCard .updated_time{float:right;}
+      .ConversationCard .message{font-size:12px;color:#777;}
+      .ConversationCard .queued_message{font-size:12px;}
+      .ConversationCard .sent_message{font-size:12px;}
+      .ConversationCard .snippet{cursor:pointer;}
+
+      .PageButtonList{padding:5px;}
+      .BulkMessageTool{padding:5px;}
+      .load_more_repeat{width:60px;}
+
+      .MessageManager .messages_list{
+        border:1px solid #ccc;
+        padding:5px;
+        padding-top:100px;
+        border-radius:3px;
+        height:calc(100vh - 22px - 30px - 36px - 30px - 174px - 15px - 2px);
+        overflow-x:hidden;
+        overflow-y:auto;
+        background-color:#fff;
+      }
+      .MessageManager .message_wrapper.self{text-align:right;}
+      .MessageManager .message_wrapper.other{text-align:left;}
+      .MessageManager .message{
+        display:inline-block;
+        max-width:90%;
+        margin:3px 0px 3px 0px;
+        padding:5px 10px 5px 10px;
+        border-radius:5px;
+        text-align:left;
+      }
+      .MessageManager .message.self{background-color:rgba(255,224,0,0.13);color:#222;/**/}
+      .MessageManager .message.other{background-color:#f7f7f7;color:#222;}
+
+      .MessageManager .image_url{}
+      .MessageManager .image_url>.preview_image{width:100%;}
+      .MessageManager audio,video{max-width:300px;}
+
+      .MessageManager .ConversationOptions .MessageLoaderButtons{width:100%;}
+      .MessageManager .ConversationOptions .LabelSelector{width:100%;height:36px;}
+      
+      .MessageManager .send-message{}
+      .MessageManager .send-message.active{cursor:pointer;background-color:#fff;color:#0084ff;}
+      .MessageManager .send-message.active:active{color:#eee;}
+
+      .MessageManager .CustomerName{display:inline-block;font-weight:bold;}
+
+      .bulk_message_queue_counter{}
+
+      /* React-Select to Override React-Datetime */
+      .Select .Select-menu-outer{z-index: 99999 !important;}
+
+      .FileUploader input{
+        width:150px;
+      }
+
+      .FileSelector .thumbnail_box {
+        display:inline-block;
+        max-height: 90px;
+        max-width:155px;
+        padding: 5px;
+        margin: 0px;
+        border:1px solid #ccc;
+        border-radius:3px;
+        cursor: pointer;
+      }
+      .FileSelector .thumbnail_box.active {
+        background-color: cornflowerblue;
+      }
+
+      .FileSelector .upload_image_thumbnail{max-height: 80px;max-width:150px;}
+      .UploadManager .FileSelector{height:450px;overflow-y:auto;}
+
+      .SReplyManager .FileSelector{white-space: nowrap;overflow-x:scroll;}
+      .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
+      .SReplyManager .selected_image_thumbnail{max-height: 80px;max-width:150px;}
+
+      .SReplyManager .SReplySelector{
+        padding:8px;
+        border:1px solid #ccc;
+        border-radius:5px;
+        height:260px;
+        overflow-x:scroll;
+        white-space: nowrap;
+      }
+      .SReplyManager .SReplySelector .sreply_image_thumbnail_box{
+        display:inline-block;
+        width:180px;
+        height:220px;
+        padding: 5px;
+        margin: 0px;
+        border:1px solid #ccc;
+        border-radius:3px;
+        cursor: pointer;
+        overflow-y:auto;
+        text-align: justify;
+      }
+      .SReplyManager .SReplySelector .sreply_image_thumbnail{max-height: 80px;max-width:150px;}
+      .SReplyManager .SReplySelector .title{font-weight:bold;}
+      .SReplyManager .SReplySelector .text{white-space: normal;}
+
+      .emoji_icon{font-size:28px;cursor:pointer;}
+      .sticker_icon{width:100px;cursor:pointer;}
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/latest/js/bootstrap.min.js"></script>
+    <script src="<%= base_dir %>/socket.io/socket.io.js"></script>
+    <script src="<%= base_dir %>/javascripts/bundle_msger.js"></script>
+  </body>
+</html>

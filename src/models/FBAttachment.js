@@ -1,5 +1,5 @@
-module.exports.FBCommentFunc = function(Sequelize,sequelize){
-    return sequelize.define('FBComment',{
+module.exports.FBAttachmentFunc = function(Sequelize,sequelize){
+    return sequelize.define('FBAttachment',{
       "id": {
         "type": "INT(11) UNSIGNED",
         "allowNull": false,
@@ -19,74 +19,74 @@ module.exports.FBCommentFunc = function(Sequelize,sequelize){
         defaultValue: null,
         "primaryKey": false
       },
-      "comment_id": {
+      "attachment_id": {
         "type": "VARCHAR(64)",
         "allowNull": false,
         "defaultValue": null,
         "primaryKey": true
       },
-      "post_id": {
-        "type": "VARCHAR(64)",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "uid": {
-        "type": "BIGINT(20) UNSIGNED",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "t_mid": {
+      "m_mid": {
         "type": "VARCHAR(64)",
         "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "created_time": {
-        "type": "DATETIME",
-        "allowNull": false,
+      "mime_type": {
+        "type": "VARCHAR(16)",
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "message": {
+      "name": {
+        "type": "VARCHAR(64)",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "image_data": {
         "type": "TEXT",
-        "allowNull": false,
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "can_reply_privately": {
-        "type": "TINYINT(4) UNSIGNED",
-        "allowNull": false,
+      "file_url": {
+        "type": "TEXT",
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       },
-      "can_comment": {
-        "type": "TINYINT(4) UNSIGNED",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "can_hide": {
-        "type": "TINYINT(4) UNSIGNED",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "can_remove": {
-        "type": "TINYINT(4) UNSIGNED",
-        "allowNull": false,
-        "defaultValue": null,
-        "primaryKey": false
-      },
-      "comment_count": {
+      "size": {
         "type": "INT(11) UNSIGNED",
-        "allowNull": false,
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "video_data": {
+        "type": "TEXT",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "type": {
+        "type": "VARCHAR(16)",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "payload": {
+        "type": "TEXT",
+        "allowNull": true,
+        "defaultValue": null,
+        "primaryKey": false
+      },
+      "sticker_id": {
+        "type": "BIGINT(20) UNSIGNED",
+        "allowNull": true,
         "defaultValue": null,
         "primaryKey": false
       }
     },{
-        tableName:'fb_comment',
+        tableName:'fb_attachment',
         timestamps:false,
         createdAt:false,
         updatedAt:false,
